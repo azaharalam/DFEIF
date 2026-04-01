@@ -4,7 +4,7 @@
 
 int main() {
   const auto names = dfabit::adapters::BackendRegistry::Instance().List();
-  std::cerr << "dfabitctl: phase3 MLIR-visible path build OK\n";
+  std::cerr << "dfabitctl: phase4 hidden-IR path build OK\n";
   for (const auto& name : names) {
     std::cerr << "adapter=" << name << "\n";
   }

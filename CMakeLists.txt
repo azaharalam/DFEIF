@@ -31,6 +31,11 @@ add_library(dfabit_core
   src/mlir/cost_model.cc
   src/runtime/runtime_correlation.cc
   src/adapters/gpu_mlir/gpu_mlir_adapter.cc
+  src/hidden_ir/graph_importer.cc
+  src/hidden_ir/sidecar_loader.cc
+  src/hidden_ir/partition_tracker.cc
+  src/adapters/cerebras/cerebras_adapter.cc
+  src/adapters/sambanova/sambanova_adapter.cc
 )
 
 set_target_properties(dfabit_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
