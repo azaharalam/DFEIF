@@ -16,6 +16,10 @@ add_library(dfabit_core
   src/core/framework.cc
   src/trace/writer_jsonl.cc
   src/analysis/report_csv.cc
+  src/analysis/overhead_engine.cc
+  src/analysis/lightweight_fit.cc
+  src/analysis/scalability_runner.cc
+  src/analysis/reporting.cc
   src/usecases/program_analyzer.cc
   src/api/context.cc
   src/metadata/stable_id.cc
