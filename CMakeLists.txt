@@ -25,6 +25,12 @@ add_library(dfabit_core
   src/adapters/shared/compile_report_parser.cc
   src/adapters/shared/runtime_log_parser.cc
   src/adapters/shared/artifact_correlator.cc
+  src/mlir/module_loader.cc
+  src/mlir/semantic_tagger.cc
+  src/mlir/manifest_exporter.cc
+  src/mlir/cost_model.cc
+  src/runtime/runtime_correlation.cc
+  src/adapters/gpu_mlir/gpu_mlir_adapter.cc
 )
 
 set_target_properties(dfabit_core PROPERTIES POSITION_INDEPENDENT_CODE ON)

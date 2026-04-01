@@ -9,7 +9,8 @@ enum class StatusCode {
   kNotFound,
   kInternal,
   kUnimplemented,
-  kAlreadyExists
+  kAlreadyExists,
+  kFailedPrecondition,
 };
 
 class Status {
