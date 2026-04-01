@@ -1,0 +1,84 @@
+# =========================
+# Build artifacts
+# =========================
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# =========================
+# Object / binary files
+# =========================
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.env
+.eggs/
+*.egg-info/
+
+# =========================
+# Pybind / native extensions
+# =========================
+*.cpython-*.so
+
+# =========================
+# Editor / IDE
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*~
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs / traces / reports
+# =========================
+*.log
+*.trace
+*.jsonl
+*.csv
+reports/
+results/
+outputs/
+artifacts/
+
+# =========================
+# Coral / TFLite artifacts
+# =========================
+*.tflite
+*_edgetpu.tflite
+edgetpu_cache/
+delegate_cache/
+
+# =========================
+# Temporary / scratch
+# =========================
+tmp/
+scratch/
