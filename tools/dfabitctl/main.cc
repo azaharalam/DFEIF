@@ -1,57 +1,107 @@
 #include <filesystem>
 #include <iostream>
+#include <memory>
 
-#include "dfabit/analysis/lightweight_fit.h"
-#include "dfabit/analysis/overhead_engine.h"
-#include "dfabit/analysis/reporting.h"
-#include "dfabit/analysis/scalability_runner.h"
 #include "dfabit/adapters/backend_registry.h"
+#include "dfabit/api/context.h"
+#include "dfabit/core/framework_config.h"
+#include "dfabit/tools/builtin/portability_report_tool.h"
+#include "dfabit/tools/tool_manager.h"
+#include "dfabit/tools/tool_registry.h"
 
 int main() {
-  const auto names = dfabit::adapters::BackendRegistry::Instance().List();
-  std::cerr << "dfabitctl: overhead and scalability layer build OK\n";
-  for (const auto& name : names) {
+  const auto adapter_names = dfabit::adapters::BackendRegistry::Instance().List();
+  const auto tool_names = dfabit::tools::ToolRegistry::Instance().List();
+
+  std::cerr << "dfabitctl: tool layer build OK\n";
+  for (const auto& name : adapter_names) {
     std::cerr << "adapter=" << name << "\n";
   }
+  for (const auto& name : tool_names) {
+    std::cerr << "tool=" << name << "\n";
+  }
 
-  dfabit::analysis::OverheadEngine overhead;
-  overhead.AddSample({
-      "gpu_mlir",
-      "full",
-      "demo",
-      1024,
-      65536,
-      10.0,
-      10.8,
-      0.2,
-      0.0,
-      100.0,
-      92.0});
+  dfabit::core::RunConfig run_cfg;
+  run_cfg.run_id = "demo_run";
+  run_cfg.output.base_output_dir = "build/tool_reports";
+  run_cfg.policy.mode = dfabit::core::InstrumentationMode::kFull;
+  run_cfg.policy.detail_level = dfabit::core::DetailLevel::kFull;
 
-  dfabit::analysis::LightweightFitEngine fit_engine;
-  dfabit::analysis::LightweightFitResult fit_result;
-  const auto fit_st = fit_engine.Fit(overhead.samples(), &fit_result);
-  if (!fit_st.ok()) {
-    std::cerr << fit_st.message() << "\n";
+  dfabit::api::Context ctx(run_cfg);
+  ctx.SetProperty("active_adapter", "gpu_mlir");
+
+  dfabit::tools::ToolManager manager;
+  auto tool = dfabit::tools::ToolRegistry::Instance().Create("portability_report");
+  if (!tool) {
+    std::cerr << "failed to create portability_report tool\n";
     return 1;
   }
 
-  dfabit::analysis::ScalabilityRunner scalability;
-  scalability.AddFromOverheadSamples("event_count", overhead.samples());
-
-  const std::string out_dir = "build/phase_reports";
-  dfabit::analysis::Reporting reporting;
-  auto st = reporting.WriteOverheadBundle(out_dir, overhead);
+  auto st = manager.AddTool(std::move(tool));
   if (!st.ok()) {
     std::cerr << st.message() << "\n";
     return 1;
   }
-  st = reporting.WriteLightweightBundle(out_dir, fit_result);
+
+  st = manager.OnRegister(&ctx);
   if (!st.ok()) {
     std::cerr << st.message() << "\n";
     return 1;
   }
-  st = reporting.WriteScalabilityBundle(out_dir, scalability);
+
+  st = manager.OnInit(&ctx);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  dfabit::adapters::CompileArtifactSet compile_artifacts;
+  dfabit::adapters::RuntimeArtifactSet runtime_artifacts;
+
+  dfabit::adapters::MetricSample metric;
+  metric.name = "instrumented_latency_ms";
+  metric.value = 12.4;
+  metric.unit = "ms";
+  metric.stage = "run";
+  runtime_artifacts.metrics.push_back(metric);
+
+  st = manager.OnCompileBegin(&ctx, compile_artifacts);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  st = manager.OnCompileEnd(&ctx, compile_artifacts);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  st = manager.OnLoadBegin(&ctx, runtime_artifacts);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  st = manager.OnLoadEnd(&ctx, runtime_artifacts);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  st = manager.OnRunBegin(&ctx, runtime_artifacts);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  st = manager.OnRunEnd(&ctx, runtime_artifacts);
+  if (!st.ok()) {
+    std::cerr << st.message() << "\n";
+    return 1;
+  }
+
+  st = manager.OnShutdown(&ctx);
   if (!st.ok()) {
     std::cerr << st.message() << "\n";
     return 1;

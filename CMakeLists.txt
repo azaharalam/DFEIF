@@ -40,6 +40,10 @@ add_library(dfabit_core
   src/hidden_ir/partition_tracker.cc
   src/adapters/cerebras/cerebras_adapter.cc
   src/adapters/sambanova/sambanova_adapter.cc
+  src/tools/tool_registry.cc
+  src/tools/tool_manager.cc
+  src/tools/tool_context.cc
+  src/tools/builtin/portability_report_tool.cc
 )
 
 set_target_properties(dfabit_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
