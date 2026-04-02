@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "dfabit/adapters/backend_adapter.h"
 #include "dfabit/adapters/shared/artifact_correlator.h"

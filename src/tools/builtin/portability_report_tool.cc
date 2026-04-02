@@ -6,24 +6,8 @@
 
 #include "dfabit/adapters/backend_registry.h"
 #include "dfabit/tools/tool_context.h"
-#include "dfabit/tools/tool_registry.h"
 
 namespace dfabit::tools::builtin {
-
-namespace {
-
-class PortabilityReportToolRegistrar {
- public:
-  PortabilityReportToolRegistrar() {
-    (void)dfabit::tools::ToolRegistry::Instance().Register(
-        "portability_report",
-        &CreatePortabilityReportTool);
-  }
-};
-
-PortabilityReportToolRegistrar g_registrar;
-
-}  // namespace
 
 std::string PortabilityReportTool::name() const {
   return "portability_report";

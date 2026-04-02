@@ -6,8 +6,6 @@
 #include <sstream>
 #include <utility>
 
-#include "dfabit/adapters/backend_registry.h"
-
 namespace dfabit::adapters::cerebras {
 
 namespace {
@@ -19,16 +17,6 @@ std::uint64_t NowNs() {
           .count());
 }
 
-std::string ReadTextFile(const std::string& path) {
-  std::ifstream ifs(path);
-  if (!ifs.is_open()) {
-    return {};
-  }
-  std::stringstream buffer;
-  buffer << ifs.rdbuf();
-  return buffer.str();
-}
-
 std::string DetectPath(const dfabit::api::Context& ctx, const std::string& key) {
   const auto from_property = ctx.GetProperty(key);
   if (!from_property.empty()) {
@@ -36,17 +24,6 @@ std::string DetectPath(const dfabit::api::Context& ctx, const std::string& key) 
   }
   return ctx.run_context().GetAttribute(key);
 }
-
-class CerebrasAdapterRegistrar {
- public:
-  CerebrasAdapterRegistrar() {
-    (void)dfabit::adapters::BackendRegistry::Instance().Register(
-        "cerebras",
-        &CreateCerebrasAdapter);
-  }
-};
-
-CerebrasAdapterRegistrar g_registrar;
 
 }  // namespace
 

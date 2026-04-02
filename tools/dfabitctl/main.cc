@@ -1,22 +1,37 @@
-#include <filesystem>
 #include <iostream>
 #include <memory>
 
 #include "dfabit/adapters/backend_registry.h"
+#include "dfabit/adapters/register_builtin_adapters.h"
 #include "dfabit/api/context.h"
 #include "dfabit/core/framework_config.h"
-#include "dfabit/tools/builtin/portability_report_tool.h"
+#include "dfabit/tools/register_builtin_tools.h"
 #include "dfabit/tools/tool_manager.h"
 #include "dfabit/tools/tool_registry.h"
 
 int main() {
+  auto st = dfabit::adapters::RegisterBuiltinAdapters();
+  if (!st.ok()) {
+    std::cerr << "adapter registration failed: " << st.message() << "\n";
+    return 1;
+  }
+
+  st = dfabit::tools::RegisterBuiltinTools();
+  if (!st.ok()) {
+    std::cerr << "tool registration failed: " << st.message() << "\n";
+    return 1;
+  }
+
   const auto adapter_names = dfabit::adapters::BackendRegistry::Instance().List();
   const auto tool_names = dfabit::tools::ToolRegistry::Instance().List();
 
   std::cerr << "dfabitctl: tool layer build OK\n";
+  std::cerr << "adapter count=" << adapter_names.size() << "\n";
   for (const auto& name : adapter_names) {
     std::cerr << "adapter=" << name << "\n";
   }
+
+  std::cerr << "tool count=" << tool_names.size() << "\n";
   for (const auto& name : tool_names) {
     std::cerr << "tool=" << name << "\n";
   }
@@ -37,7 +52,7 @@ int main() {
     return 1;
   }
 
-  auto st = manager.AddTool(std::move(tool));
+  st = manager.AddTool(std::move(tool));
   if (!st.ok()) {
     std::cerr << st.message() << "\n";
     return 1;

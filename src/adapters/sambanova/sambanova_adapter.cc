@@ -6,8 +6,6 @@
 #include <sstream>
 #include <utility>
 
-#include "dfabit/adapters/backend_registry.h"
-
 namespace dfabit::adapters::sambanova {
 
 namespace {
@@ -26,17 +24,6 @@ std::string DetectPath(const dfabit::api::Context& ctx, const std::string& key) 
   }
   return ctx.run_context().GetAttribute(key);
 }
-
-class SambaNovaAdapterRegistrar {
- public:
-  SambaNovaAdapterRegistrar() {
-    (void)dfabit::adapters::BackendRegistry::Instance().Register(
-        "sambanova",
-        &CreateSambaNovaAdapter);
-  }
-};
-
-SambaNovaAdapterRegistrar g_registrar;
 
 }  // namespace
 

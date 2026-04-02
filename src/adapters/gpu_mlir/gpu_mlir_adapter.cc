@@ -5,8 +5,6 @@
 #include <sstream>
 #include <utility>
 
-#include "dfabit/adapters/backend_registry.h"
-
 namespace dfabit::adapters::gpu_mlir {
 
 namespace {
@@ -79,17 +77,6 @@ std::vector<dfabit::runtime::RuntimeRecord> ParseRuntimeMetricsText(const std::s
   }
   return out;
 }
-
-class GpuMlirAdapterRegistrar {
- public:
-  GpuMlirAdapterRegistrar() {
-    (void)dfabit::adapters::BackendRegistry::Instance().Register(
-        "gpu_mlir",
-        &CreateGpuMlirAdapter);
-  }
-};
-
-GpuMlirAdapterRegistrar g_registrar;
 
 }  // namespace
 

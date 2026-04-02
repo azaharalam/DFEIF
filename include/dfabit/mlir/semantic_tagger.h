@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "dfabit/core/status.h"
 #include "dfabit/metadata/model_desc.h"

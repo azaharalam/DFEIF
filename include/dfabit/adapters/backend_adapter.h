@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <cstdint>
 
 #include "dfabit/adapters/artifacts.h"
 #include "dfabit/adapters/capabilities.h"

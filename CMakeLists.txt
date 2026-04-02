@@ -26,6 +26,7 @@ add_library(dfabit_core
   src/policy/policy_engine.cc
   src/adapters/backend_adapter.cc
   src/adapters/backend_registry.cc
+  src/adapters/register_builtin_adapters.cc
   src/adapters/shared/compile_report_parser.cc
   src/adapters/shared/runtime_log_parser.cc
   src/adapters/shared/artifact_correlator.cc
@@ -43,6 +44,7 @@ add_library(dfabit_core
   src/tools/tool_registry.cc
   src/tools/tool_manager.cc
   src/tools/tool_context.cc
+  src/tools/register_builtin_tools.cc
   src/tools/builtin/portability_report_tool.cc
 )
 

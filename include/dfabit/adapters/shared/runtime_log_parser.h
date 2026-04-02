@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "dfabit/adapters/artifacts.h"
 #include "dfabit/core/status.h"
