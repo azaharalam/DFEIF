@@ -15,6 +15,7 @@
 #include "dfabit/analysis/reporting.h"
 #include "dfabit/analysis/scalability_runner.h"
 #include "dfabit/api/context.h"
+#include "dfabit/core/file_utils.h"
 #include "dfabit/core/framework_config.h"
 #include "dfabit/tools/register_builtin_tools.h"
 #include "dfabit/tools/tool_context.h"
@@ -35,6 +36,20 @@ bool HasMetric(
     }
   }
   return false;
+}
+
+dfabit::core::Status RequireFileIfSet(
+    const std::string& label,
+    const std::string& path) {
+  if (path.empty()) {
+    return dfabit::core::Status::Ok();
+  }
+  if (!dfabit::core::IsRegularFile(path)) {
+    return {
+        dfabit::core::StatusCode::kNotFound,
+        label + " file not found: " + path};
+  }
+  return dfabit::core::Status::Ok();
 }
 
 dfabit::core::Status ConfigureContext(
@@ -481,6 +496,33 @@ dfabit::core::Status ValidateOptions(const CliOptions& options) {
         "--sampling-ratio must be in (0,1]"};
   }
 
+  auto st = RequireFileIfSet("mlir", options.mlir_path);
+  if (!st.ok()) {
+    return st;
+  }
+  st = RequireFileIfSet("graph", options.graph_path);
+  if (!st.ok()) {
+    return st;
+  }
+  st = RequireFileIfSet("sidecar", options.sidecar_path);
+  if (!st.ok()) {
+    return st;
+  }
+  st = RequireFileIfSet("compile report", options.compile_report_path);
+  if (!st.ok()) {
+    return st;
+  }
+  st = RequireFileIfSet("runtime log", options.runtime_log_path);
+  if (!st.ok()) {
+    return st;
+  }
+
+  if (!options.work_dir.empty() && !dfabit::core::PathExists(options.work_dir)) {
+    return {
+        dfabit::core::StatusCode::kNotFound,
+        "work directory not found: " + options.work_dir};
+  }
+
   if (options.backend == "gpu_mlir") {
     if (options.mlir_path.empty()) {
       return {dfabit::core::StatusCode::kInvalidArgument, "gpu_mlir requires --mlir"};
@@ -534,8 +576,14 @@ dfabit::core::Status Run(const CliOptions& options) {
     return st;
   }
 
-  std::filesystem::create_directories(options.output_dir);
-  std::filesystem::create_directories(run_cfg.output.report_dir);
+  st = dfabit::core::EnsureDirectory(options.output_dir);
+  if (!st.ok()) {
+    return st;
+  }
+  st = dfabit::core::EnsureDirectory(run_cfg.output.report_dir);
+  if (!st.ok()) {
+    return st;
+  }
 
   dfabit::api::Context ctx(run_cfg);
   st = ConfigureContext(options, &ctx);

@@ -1,12 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 project(dfabit LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(DFABIT_BUILD_TOOLS "Build dfabitctl CLI tools" ON)
 option(DFABIT_BUILD_PYTHON "Build Python bindings if pybind11 is available" ON)
 option(DFABIT_ENABLE_WERROR "Treat warnings as errors" OFF)
+option(DFABIT_BUILD_TESTS "Build dfabit smoke tests" ON)
 
 add_library(dfabit_core
   src/core/status.cc
@@ -14,6 +17,7 @@ add_library(dfabit_core
   src/core/log.cc
   src/core/session.cc
   src/core/framework.cc
+  src/core/file_utils.cc
   src/trace/writer_jsonl.cc
   src/trace/trace_buffer.cc
   src/trace/tracer.cc
@@ -79,6 +83,12 @@ endif()
 if(DFABIT_BUILD_TOOLS)
   add_executable(dfabitctl tools/dfabitctl/main.cc)
   target_link_libraries(dfabitctl PRIVATE dfabit_core)
+endif()
+
+if(DFABIT_BUILD_TESTS)
+  add_executable(smoketest tests/smoketest.cc)
+  target_link_libraries(smoketest PRIVATE dfabit_core)
+  add_test(NAME smoketest COMMAND smoketest)
 endif()
 
 if(DFABIT_BUILD_PYTHON)
