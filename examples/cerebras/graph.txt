@@ -1,0 +1,2 @@
+sg0,matmul,compile,64x64xf32,f32
+sg1,relu,compile,64x64xf32,f32

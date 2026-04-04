@@ -1,0 +1,2 @@
+part0,conv2d,compile,1x64x64x32,f32
+part1,add,compile,1x64x64x32,f32
