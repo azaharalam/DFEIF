@@ -15,6 +15,8 @@ add_library(dfabit_core
   src/core/session.cc
   src/core/framework.cc
   src/trace/writer_jsonl.cc
+  src/trace/trace_buffer.cc
+  src/trace/tracer.cc
   src/analysis/report_csv.cc
   src/analysis/overhead_engine.cc
   src/analysis/lightweight_fit.cc

@@ -1,5 +1,8 @@
 #pragma once
+
+#include <memory>
 #include <string>
+
 #include "dfabit/core/status.h"
 #include "dfabit/trace/event.h"
 
@@ -13,5 +16,6 @@ class Writer {
 };
 
 dfabit::core::Status WriteJsonlLine(const Event& e, std::string* out);
+std::unique_ptr<Writer> CreateJsonlFileWriter(const std::string& path);
 
 }  // namespace dfabit::trace

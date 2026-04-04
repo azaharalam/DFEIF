@@ -20,6 +20,7 @@
 #include "dfabit/tools/tool_context.h"
 #include "dfabit/tools/tool_manager.h"
 #include "dfabit/tools/tool_registry.h"
+#include "dfabit/trace/tracer.h"
 
 namespace dfabit::cli {
 
@@ -125,6 +126,8 @@ dfabit::core::Status BuildRunConfig(
   run_cfg->output.trace_jsonl_path = (std::filesystem::path(options.output_dir) / "trace.jsonl").string();
   run_cfg->output.program_analysis_csv_path =
       (std::filesystem::path(options.output_dir) / "program_analysis.csv").string();
+  run_cfg->trace.enabled = true;
+  run_cfg->trace.buffer_capacity = 128;
   run_cfg->policy.mode = dfabit::core::InstrumentationMode::kFull;
   run_cfg->policy.detail_level = dfabit::core::DetailLevel::kFull;
   return dfabit::core::Status::Ok();
@@ -158,7 +161,8 @@ dfabit::core::Status WriteBundleOutputs(
     const CliOptions& options,
     const dfabit::api::Context& ctx,
     const dfabit::adapters::CompileArtifactSet& compile_artifacts,
-    const dfabit::adapters::RuntimeArtifactSet& runtime_artifacts) {
+    const dfabit::adapters::RuntimeArtifactSet& runtime_artifacts,
+    const dfabit::trace::Tracer& tracer) {
   const auto reports_dir = std::filesystem::path(options.output_dir) / "reports";
   std::filesystem::create_directories(reports_dir);
 
@@ -183,6 +187,11 @@ dfabit::core::Status WriteBundleOutputs(
     return st;
   }
 
+  st = tracer.WriteStatsCsv((reports_dir / "trace_stats.csv").string());
+  if (!st.ok()) {
+    return st;
+  }
+
   {
     std::ofstream ofs((reports_dir / "run_summary.txt").string());
     if (!ofs.is_open()) {
@@ -191,6 +200,8 @@ dfabit::core::Status WriteBundleOutputs(
           "failed to open run summary"};
     }
 
+    const auto& trace_stats = tracer.stats();
+
     ofs << "backend=" << options.backend << "\n";
     ofs << "output_dir=" << options.output_dir << "\n";
     ofs << "metadata_op_count=" << ctx.metadata_ops().size() << "\n";
@@ -198,6 +209,11 @@ dfabit::core::Status WriteBundleOutputs(
     ofs << "runtime_metric_count=" << runtime_artifacts.metrics.size() << "\n";
     ofs << "graph_name=" << ctx.run_context().GetAttribute("graph_name") << "\n";
     ofs << "manifest_path=" << ctx.GetProperty("manifest_path") << "\n";
+    ofs << "trace_path=" << ctx.run_context().config().output.trace_jsonl_path << "\n";
+    ofs << "trace_event_count=" << trace_stats.event_count << "\n";
+    ofs << "trace_bytes_written=" << trace_stats.bytes_written << "\n";
+    ofs << "trace_flush_count=" << trace_stats.flush_count << "\n";
+    ofs << "trace_dropped_event_count=" << trace_stats.dropped_event_count << "\n";
   }
 
   const bool has_overhead_inputs =
@@ -314,6 +330,28 @@ dfabit::core::Status Run(const CliOptions& options) {
     return st;
   }
 
+  dfabit::trace::Tracer tracer;
+  st = tracer.Open(
+      run_cfg.output.trace_jsonl_path,
+      "session_" + options.backend,
+      run_cfg.run_id,
+      options.backend,
+      "full",
+      run_cfg.trace.buffer_capacity);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kSession,
+      "session_begin",
+      0,
+      "session",
+      {{"backend", options.backend}, {"output_dir", options.output_dir}});
+  if (!st.ok()) {
+    return st;
+  }
+
   dfabit::tools::ToolManager tool_manager;
   st = AddBuiltinTools(options, &tool_manager);
   if (!st.ok()) {
@@ -321,6 +359,16 @@ dfabit::core::Status Run(const CliOptions& options) {
   }
 
   st = adapter->InitializeSession(&ctx);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kDiagnostic,
+      "adapter_initialized",
+      0,
+      "session",
+      {{"adapter", options.backend}});
   if (!st.ok()) {
     return st;
   }
@@ -343,6 +391,16 @@ dfabit::core::Status Run(const CliOptions& options) {
     return st;
   }
 
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kCompile,
+      "compile_begin",
+      0,
+      "compile",
+      {{"input_count", std::to_string(compile_artifacts.inputs.size())}});
+  if (!st.ok()) {
+    return st;
+  }
+
   st = tool_manager.OnCompileBegin(&ctx, compile_artifacts);
   if (!st.ok()) {
     return st;
@@ -354,6 +412,21 @@ dfabit::core::Status Run(const CliOptions& options) {
   }
 
   st = adapter->CompileEnd(&ctx, &compile_artifacts);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.EmitMetrics(compile_artifacts.metrics, "compile");
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kCompile,
+      "compile_end",
+      0,
+      "compile",
+      {{"output_count", std::to_string(compile_artifacts.outputs.size())}});
   if (!st.ok()) {
     return st;
   }
@@ -370,8 +443,29 @@ dfabit::core::Status Run(const CliOptions& options) {
       if (!st.ok()) {
         return st;
       }
+
+      st = tracer.Emit(
+          dfabit::trace::EventKind::kDiagnostic,
+          "manifest_loaded",
+          0,
+          artifact.stage,
+          {{"manifest_path", artifact.path}});
+      if (!st.ok()) {
+        return st;
+      }
+
       break;
     }
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kLoad,
+      "load_begin",
+      0,
+      "load",
+      {{"input_count", std::to_string(runtime_artifacts.inputs.size())}});
+  if (!st.ok()) {
+    return st;
   }
 
   st = tool_manager.OnLoadBegin(&ctx, runtime_artifacts);
@@ -389,7 +483,32 @@ dfabit::core::Status Run(const CliOptions& options) {
     return st;
   }
 
+  st = tracer.EmitMetrics(runtime_artifacts.metrics, "load");
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kLoad,
+      "load_end",
+      0,
+      "load",
+      {{"metric_count", std::to_string(runtime_artifacts.metrics.size())}});
+  if (!st.ok()) {
+    return st;
+  }
+
   st = tool_manager.OnLoadEnd(&ctx, runtime_artifacts);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kRun,
+      "run_begin",
+      0,
+      "run",
+      {{"backend", options.backend}});
   if (!st.ok()) {
     return st;
   }
@@ -409,6 +528,35 @@ dfabit::core::Status Run(const CliOptions& options) {
     return st;
   }
 
+  st = tracer.EmitMetrics(runtime_artifacts.metrics, "run");
+  if (!st.ok()) {
+    return st;
+  }
+
+  for (const auto& metric : runtime_artifacts.metrics) {
+    if (metric.stable_id != 0) {
+      st = tracer.Emit(
+          dfabit::trace::EventKind::kSubgraph,
+          "subgraph_metric",
+          metric.stable_id,
+          metric.stage.empty() ? "run" : metric.stage,
+          {{"metric_name", metric.name}, {"value", std::to_string(metric.value)}});
+      if (!st.ok()) {
+        return st;
+      }
+    }
+  }
+
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kRun,
+      "run_end",
+      0,
+      "run",
+      {{"metric_count", std::to_string(runtime_artifacts.metrics.size())}});
+  if (!st.ok()) {
+    return st;
+  }
+
   st = tool_manager.OnRunEnd(&ctx, runtime_artifacts);
   if (!st.ok()) {
     return st;
@@ -419,12 +567,32 @@ dfabit::core::Status Run(const CliOptions& options) {
     return st;
   }
 
-  st = WriteBundleOutputs(options, ctx, compile_artifacts, runtime_artifacts);
+  st = tracer.Emit(
+      dfabit::trace::EventKind::kSession,
+      "session_end",
+      0,
+      "session",
+      {{"trace_path", run_cfg.output.trace_jsonl_path}});
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Flush();
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = WriteBundleOutputs(options, ctx, compile_artifacts, runtime_artifacts, tracer);
   if (!st.ok()) {
     return st;
   }
 
   st = adapter->Shutdown(&ctx);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = tracer.Close();
   if (!st.ok()) {
     return st;
   }

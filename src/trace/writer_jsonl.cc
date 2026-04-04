@@ -2,10 +2,13 @@
 
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 namespace dfabit::trace {
 
-static std::string EscapeJson(const std::string& s) {
+namespace {
+
+std::string EscapeJson(const std::string& s) {
   std::ostringstream o;
   for (char c : s) {
     switch (c) {
@@ -28,6 +31,43 @@ static std::string EscapeJson(const std::string& s) {
   }
   return o.str();
 }
+
+class JsonlFileWriter final : public Writer {
+ public:
+  explicit JsonlFileWriter(std::string path) : path_(std::move(path)), ofs_(path_, std::ios::out) {}
+
+  dfabit::core::Status Write(const Event& e) override {
+    if (!ofs_.is_open()) {
+      return {dfabit::core::StatusCode::kInternal, "failed to open trace file: " + path_};
+    }
+
+    std::string line;
+    const auto st = WriteJsonlLine(e, &line);
+    if (!st.ok()) {
+      return st;
+    }
+
+    ofs_ << line << "\n";
+    if (!ofs_.good()) {
+      return {dfabit::core::StatusCode::kInternal, "failed to write trace file: " + path_};
+    }
+
+    return dfabit::core::Status::Ok();
+  }
+
+  void Close() override {
+    if (ofs_.is_open()) {
+      ofs_.flush();
+      ofs_.close();
+    }
+  }
+
+ private:
+  std::string path_;
+  std::ofstream ofs_;
+};
+
+}  // namespace
 
 dfabit::core::Status WriteJsonlLine(const Event& e, std::string* out) {
   if (!out) {
@@ -60,35 +100,8 @@ dfabit::core::Status WriteJsonlLine(const Event& e, std::string* out) {
   return dfabit::core::Status::Ok();
 }
 
-class JsonlFileWriter final : public Writer {
- public:
-  explicit JsonlFileWriter(std::string path) : path_(std::move(path)), ofs_(path_, std::ios::out) {}
-
-  dfabit::core::Status Write(const Event& e) override {
-    if (!ofs_.is_open()) {
-      return {dfabit::core::StatusCode::kInternal, "failed to open trace file: " + path_};
-    }
-
-    std::string line;
-    const auto st = WriteJsonlLine(e, &line);
-    if (!st.ok()) {
-      return st;
-    }
-
-    ofs_ << line << "\n";
-    ofs_.flush();
-    return dfabit::core::Status::Ok();
-  }
-
-  void Close() override {
-    if (ofs_.is_open()) {
-      ofs_.close();
-    }
-  }
-
- private:
-  std::string path_;
-  std::ofstream ofs_;
-};
+std::unique_ptr<Writer> CreateJsonlFileWriter(const std::string& path) {
+  return std::make_unique<JsonlFileWriter>(path);
+}
 
 }  // namespace dfabit::trace
