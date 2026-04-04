@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
-#include <vector>
 #include <cstdint>
+#include <string>
 
 #include "dfabit/adapters/backend_adapter.h"
+#include "dfabit/adapters/sambanova/sambanova_workflow.h"
 #include "dfabit/adapters/shared/artifact_correlator.h"
 #include "dfabit/adapters/shared/compile_report_parser.h"
 #include "dfabit/adapters/shared/runtime_log_parser.h"
@@ -81,16 +81,18 @@ class SambaNovaAdapter final : public BackendAdapter {
       const std::string& stage);
 
   void IndexModel();
-
-  std::string OutputPath(const dfabit::api::Context& ctx, const std::string& file) const;
+  std::string OutputPath(
+      const dfabit::api::Context& ctx,
+      const std::string& file) const;
 
   dfabit::hidden_ir::GraphImporter graph_importer_;
   dfabit::hidden_ir::SidecarLoader sidecar_loader_;
   dfabit::hidden_ir::PartitionTracker partition_tracker_;
+  dfabit::runtime::RuntimeCorrelator runtime_correlator_;
+  dfabit::adapters::shared::ArtifactCorrelator artifact_correlator_;
   dfabit::adapters::shared::CompileReportParser compile_report_parser_;
   dfabit::adapters::shared::RuntimeLogParser runtime_log_parser_;
-  dfabit::adapters::shared::ArtifactCorrelator artifact_correlator_;
-  dfabit::runtime::RuntimeCorrelator runtime_correlator_;
+  SambaNovaWorkflow workflow_;
   dfabit::metadata::ModelDesc model_;
 };
 

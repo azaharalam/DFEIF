@@ -34,6 +34,7 @@ add_library(dfabit_core
   src/adapters/shared/runtime_log_parser.cc
   src/adapters/shared/artifact_correlator.cc
   src/adapters/cerebras/cerebras_workflow.cc
+  src/adapters/sambanova/sambanova_workflow.cc
   src/mlir/module_loader.cc
   src/mlir/semantic_tagger.cc
   src/mlir/manifest_exporter.cc

@@ -2,9 +2,8 @@
 
 #include <chrono>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <utility>
+#include <vector>
 
 namespace dfabit::adapters::sambanova {
 
@@ -61,7 +60,13 @@ AdapterCapabilities SambaNovaAdapter::DiscoverCapabilities(const dfabit::api::Co
   caps.custom_env_controls = true;
   caps.supported_stages = {"compile", "load", "run", "partition"};
   caps.supported_artifact_types = {"graph_ir", "manifest", "compile_report", "runtime_log", "profile"};
-  caps.supported_metric_names = {"latency_ms", "throughput", "utilization", "partition_ms"};
+  caps.supported_metric_names = {
+      "latency_ms",
+      "throughput",
+      "utilization",
+      "partition_ms",
+      "compile_command_elapsed_ms",
+      "run_command_elapsed_ms"};
   return caps;
 }
 
@@ -163,8 +168,13 @@ dfabit::core::Status SambaNovaAdapter::CompileEnd(
     return {dfabit::core::StatusCode::kInvalidArgument, "compile inputs are empty"};
   }
 
+  auto st = workflow_.MaybeRunCompile(ctx, compile_artifacts);
+  if (!st.ok()) {
+    return st;
+  }
+
   const auto& graph_artifact = compile_artifacts->inputs.front();
-  auto st = BuildModel(ctx, graph_artifact.path, graph_artifact.stage);
+  st = BuildModel(ctx, graph_artifact.path, graph_artifact.stage);
   if (!st.ok()) {
     return st;
   }
@@ -235,7 +245,12 @@ dfabit::core::Status SambaNovaAdapter::RunEnd(
     return {dfabit::core::StatusCode::kInvalidArgument, "invalid RunEnd arguments"};
   }
 
-  auto st = CollectRuntimeMetrics(ctx, runtime_artifacts);
+  auto st = workflow_.MaybeRunExecution(ctx, runtime_artifacts);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = CollectRuntimeMetrics(ctx, runtime_artifacts);
   if (!st.ok()) {
     return st;
   }

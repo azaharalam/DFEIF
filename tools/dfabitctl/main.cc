@@ -16,7 +16,8 @@ void PrintUsage() {
          "[--runtime-log <file>] [--work-dir <dir>] [--compile-cmd <cmd>] [--run-cmd <cmd>] "
          "--out <dir> [--mode full|baseline|selective|sampled]\n"
       << "  dfabitctl --backend sambanova --graph <file> [--sidecar <file>] [--compile-report <file>] "
-         "[--runtime-log <file>] --out <dir> [--mode full|baseline|selective|sampled]\n"
+         "[--runtime-log <file>] [--work-dir <dir>] [--compile-cmd <cmd>] [--run-cmd <cmd>] "
+         "--out <dir> [--mode full|baseline|selective|sampled]\n"
       << "\n"
       << "batch run:\n"
       << "  dfabitctl --config <experiment.cfg>\n";

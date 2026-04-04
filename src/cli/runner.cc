@@ -99,19 +99,34 @@ dfabit::core::Status ConfigureContext(
     }
   }
 
-  if (!options.work_dir.empty() && options.backend == "cerebras") {
-    ctx->SetProperty("cerebras_work_dir", options.work_dir);
-    ctx->mutable_run_context().SetAttribute("cerebras_work_dir", options.work_dir);
+  if (!options.work_dir.empty()) {
+    if (options.backend == "cerebras") {
+      ctx->SetProperty("cerebras_work_dir", options.work_dir);
+      ctx->mutable_run_context().SetAttribute("cerebras_work_dir", options.work_dir);
+    } else if (options.backend == "sambanova") {
+      ctx->SetProperty("sambanova_work_dir", options.work_dir);
+      ctx->mutable_run_context().SetAttribute("sambanova_work_dir", options.work_dir);
+    }
   }
 
-  if (!options.compile_cmd.empty() && options.backend == "cerebras") {
-    ctx->SetProperty("cerebras_compile_cmd", options.compile_cmd);
-    ctx->mutable_run_context().SetAttribute("cerebras_compile_cmd", options.compile_cmd);
+  if (!options.compile_cmd.empty()) {
+    if (options.backend == "cerebras") {
+      ctx->SetProperty("cerebras_compile_cmd", options.compile_cmd);
+      ctx->mutable_run_context().SetAttribute("cerebras_compile_cmd", options.compile_cmd);
+    } else if (options.backend == "sambanova") {
+      ctx->SetProperty("sambanova_compile_cmd", options.compile_cmd);
+      ctx->mutable_run_context().SetAttribute("sambanova_compile_cmd", options.compile_cmd);
+    }
   }
 
-  if (!options.run_cmd.empty() && options.backend == "cerebras") {
-    ctx->SetProperty("cerebras_run_cmd", options.run_cmd);
-    ctx->mutable_run_context().SetAttribute("cerebras_run_cmd", options.run_cmd);
+  if (!options.run_cmd.empty()) {
+    if (options.backend == "cerebras") {
+      ctx->SetProperty("cerebras_run_cmd", options.run_cmd);
+      ctx->mutable_run_context().SetAttribute("cerebras_run_cmd", options.run_cmd);
+    } else if (options.backend == "sambanova") {
+      ctx->SetProperty("sambanova_run_cmd", options.run_cmd);
+      ctx->mutable_run_context().SetAttribute("sambanova_run_cmd", options.run_cmd);
+    }
   }
 
   return dfabit::core::Status::Ok();
