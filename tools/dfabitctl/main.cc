@@ -125,6 +125,8 @@ int main(int argc, char** argv) {
       options.enable_portability_tool = false;
     } else if (arg == "--no-overhead-profiler-tool") {
       options.enable_overhead_profiler_tool = false;
+    } else if (arg == "--no-semantic-attribution-tool") {
+      options.enable_semantic_attribution_tool = false;
     } else if (arg == "--help" || arg == "-h") {
       PrintUsage();
       return 0;

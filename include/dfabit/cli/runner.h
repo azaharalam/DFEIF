@@ -25,6 +25,7 @@ struct CliOptions {
 
   bool enable_portability_tool = true;
   bool enable_overhead_profiler_tool = true;
+  bool enable_semantic_attribution_tool = true;
 };
 
 dfabit::core::Status Run(const CliOptions& options);

@@ -192,6 +192,20 @@ dfabit::core::Status AddBuiltinTools(
     }
   }
 
+  if (options.enable_semantic_attribution_tool) {
+    auto semantic_tool =
+        dfabit::tools::ToolRegistry::Instance().Create("semantic_attribution");
+    if (!semantic_tool) {
+      return {
+          dfabit::core::StatusCode::kNotFound,
+          "failed to create tool: semantic_attribution"};
+    }
+    auto st = tool_manager->AddTool(std::move(semantic_tool));
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
   return dfabit::core::Status::Ok();
 }
 

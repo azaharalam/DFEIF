@@ -2,6 +2,7 @@
 
 #include "dfabit/tools/builtin/overhead_profiler_tool.h"
 #include "dfabit/tools/builtin/portability_report_tool.h"
+#include "dfabit/tools/builtin/semantic_attribution_tool.h"
 #include "dfabit/tools/tool_registry.h"
 
 namespace dfabit::tools {
@@ -20,6 +21,15 @@ dfabit::core::Status RegisterBuiltinTools() {
     const auto st = ToolRegistry::Instance().Register(
         "overhead_profiler",
         &dfabit::tools::builtin::CreateOverheadProfilerTool);
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
+  if (!ToolRegistry::Instance().HasTool("semantic_attribution")) {
+    const auto st = ToolRegistry::Instance().Register(
+        "semantic_attribution",
+        &dfabit::tools::builtin::CreateSemanticAttributionTool);
     if (!st.ok()) {
       return st;
     }

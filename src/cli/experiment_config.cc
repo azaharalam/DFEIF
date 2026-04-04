@@ -82,6 +82,9 @@ void ApplyKeyValue(
   } else if (key == "enable_overhead_profiler_tool") {
     spec->options.enable_overhead_profiler_tool =
         !(value == "0" || value == "false" || value == "False");
+  } else if (key == "enable_semantic_attribution_tool") {
+    spec->options.enable_semantic_attribution_tool =
+        !(value == "0" || value == "false" || value == "False");
   }
 }
 
