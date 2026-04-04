@@ -13,7 +13,8 @@ void PrintUsage() {
       << "single run:\n"
       << "  dfabitctl --backend gpu_mlir --mlir <file> --out <dir> [--mode full|baseline|selective|sampled]\n"
       << "  dfabitctl --backend cerebras --graph <file> [--sidecar <file>] [--compile-report <file>] "
-         "[--runtime-log <file>] --out <dir> [--mode full|baseline|selective|sampled]\n"
+         "[--runtime-log <file>] [--work-dir <dir>] [--compile-cmd <cmd>] [--run-cmd <cmd>] "
+         "--out <dir> [--mode full|baseline|selective|sampled]\n"
       << "  dfabitctl --backend sambanova --graph <file> [--sidecar <file>] [--compile-report <file>] "
          "[--runtime-log <file>] --out <dir> [--mode full|baseline|selective|sampled]\n"
       << "\n"
@@ -81,6 +82,24 @@ int main(int argc, char** argv) {
         return 1;
       }
       options.runtime_log_path = argv[++i];
+    } else if (arg == "--work-dir") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --work-dir\n";
+        return 1;
+      }
+      options.work_dir = argv[++i];
+    } else if (arg == "--compile-cmd") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --compile-cmd\n";
+        return 1;
+      }
+      options.compile_cmd = argv[++i];
+    } else if (arg == "--run-cmd") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --run-cmd\n";
+        return 1;
+      }
+      options.run_cmd = argv[++i];
     } else if (arg == "--mode") {
       if (!RequireValue(argc, argv, i)) {
         std::cerr << "missing value for --mode\n";
@@ -127,6 +146,8 @@ int main(int argc, char** argv) {
       options.enable_overhead_profiler_tool = false;
     } else if (arg == "--no-semantic-attribution-tool") {
       options.enable_semantic_attribution_tool = false;
+    } else if (arg == "--no-dataflow-memory-proxy-tool") {
+      options.enable_dataflow_memory_proxy_tool = false;
     } else if (arg == "--help" || arg == "-h") {
       PrintUsage();
       return 0;

@@ -18,6 +18,10 @@ struct CliOptions {
   std::string compile_report_path;
   std::string runtime_log_path;
 
+  std::string work_dir;
+  std::string compile_cmd;
+  std::string run_cmd;
+
   std::string mode = "full";
   int repeat = 1;
   double sampling_ratio = 1.0;
@@ -26,6 +30,7 @@ struct CliOptions {
   bool enable_portability_tool = true;
   bool enable_overhead_profiler_tool = true;
   bool enable_semantic_attribution_tool = true;
+  bool enable_dataflow_memory_proxy_tool = true;
 };
 
 dfabit::core::Status Run(const CliOptions& options);

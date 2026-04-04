@@ -99,6 +99,21 @@ dfabit::core::Status ConfigureContext(
     }
   }
 
+  if (!options.work_dir.empty() && options.backend == "cerebras") {
+    ctx->SetProperty("cerebras_work_dir", options.work_dir);
+    ctx->mutable_run_context().SetAttribute("cerebras_work_dir", options.work_dir);
+  }
+
+  if (!options.compile_cmd.empty() && options.backend == "cerebras") {
+    ctx->SetProperty("cerebras_compile_cmd", options.compile_cmd);
+    ctx->mutable_run_context().SetAttribute("cerebras_compile_cmd", options.compile_cmd);
+  }
+
+  if (!options.run_cmd.empty() && options.backend == "cerebras") {
+    ctx->SetProperty("cerebras_run_cmd", options.run_cmd);
+    ctx->mutable_run_context().SetAttribute("cerebras_run_cmd", options.run_cmd);
+  }
+
   return dfabit::core::Status::Ok();
 }
 
@@ -201,6 +216,20 @@ dfabit::core::Status AddBuiltinTools(
           "failed to create tool: semantic_attribution"};
     }
     auto st = tool_manager->AddTool(std::move(semantic_tool));
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
+  if (options.enable_dataflow_memory_proxy_tool) {
+    auto proxy_tool =
+        dfabit::tools::ToolRegistry::Instance().Create("dataflow_memory_proxy");
+    if (!proxy_tool) {
+      return {
+          dfabit::core::StatusCode::kNotFound,
+          "failed to create tool: dataflow_memory_proxy"};
+    }
+    auto st = tool_manager->AddTool(std::move(proxy_tool));
     if (!st.ok()) {
       return st;
     }

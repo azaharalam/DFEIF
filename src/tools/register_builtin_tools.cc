@@ -1,5 +1,6 @@
 #include "dfabit/tools/register_builtin_tools.h"
 
+#include "dfabit/tools/builtin/dataflow_memory_proxy_tool.h"
 #include "dfabit/tools/builtin/overhead_profiler_tool.h"
 #include "dfabit/tools/builtin/portability_report_tool.h"
 #include "dfabit/tools/builtin/semantic_attribution_tool.h"
@@ -30,6 +31,15 @@ dfabit::core::Status RegisterBuiltinTools() {
     const auto st = ToolRegistry::Instance().Register(
         "semantic_attribution",
         &dfabit::tools::builtin::CreateSemanticAttributionTool);
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
+  if (!ToolRegistry::Instance().HasTool("dataflow_memory_proxy")) {
+    const auto st = ToolRegistry::Instance().Register(
+        "dataflow_memory_proxy",
+        &dfabit::tools::builtin::CreateDataflowMemoryProxyTool);
     if (!st.ok()) {
       return st;
     }

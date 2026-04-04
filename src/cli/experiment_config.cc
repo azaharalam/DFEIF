@@ -58,6 +58,12 @@ void ApplyKeyValue(
     spec->options.compile_report_path = value;
   } else if (key == "runtime_log") {
     spec->options.runtime_log_path = value;
+  } else if (key == "work_dir") {
+    spec->options.work_dir = value;
+  } else if (key == "compile_cmd") {
+    spec->options.compile_cmd = value;
+  } else if (key == "run_cmd") {
+    spec->options.run_cmd = value;
   } else if (key == "mode") {
     spec->options.mode = value;
   } else if (key == "modes") {
@@ -84,6 +90,9 @@ void ApplyKeyValue(
         !(value == "0" || value == "false" || value == "False");
   } else if (key == "enable_semantic_attribution_tool") {
     spec->options.enable_semantic_attribution_tool =
+        !(value == "0" || value == "false" || value == "False");
+  } else if (key == "enable_dataflow_memory_proxy_tool") {
+    spec->options.enable_dataflow_memory_proxy_tool =
         !(value == "0" || value == "false" || value == "False");
   }
 }
