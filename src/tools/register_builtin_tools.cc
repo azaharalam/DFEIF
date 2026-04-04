@@ -1,5 +1,6 @@
 #include "dfabit/tools/register_builtin_tools.h"
 
+#include "dfabit/tools/builtin/overhead_profiler_tool.h"
 #include "dfabit/tools/builtin/portability_report_tool.h"
 #include "dfabit/tools/tool_registry.h"
 
@@ -10,6 +11,15 @@ dfabit::core::Status RegisterBuiltinTools() {
     const auto st = ToolRegistry::Instance().Register(
         "portability_report",
         &dfabit::tools::builtin::CreatePortabilityReportTool);
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
+  if (!ToolRegistry::Instance().HasTool("overhead_profiler")) {
+    const auto st = ToolRegistry::Instance().Register(
+        "overhead_profiler",
+        &dfabit::tools::builtin::CreateOverheadProfilerTool);
     if (!st.ok()) {
       return st;
     }

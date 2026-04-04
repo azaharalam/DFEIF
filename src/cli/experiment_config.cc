@@ -77,7 +77,11 @@ void ApplyKeyValue(
   } else if (key == "include_ops") {
     spec->options.include_ops = Split(value, ',');
   } else if (key == "enable_portability_tool") {
-    spec->options.enable_portability_tool = !(value == "0" || value == "false" || value == "False");
+    spec->options.enable_portability_tool =
+        !(value == "0" || value == "false" || value == "False");
+  } else if (key == "enable_overhead_profiler_tool") {
+    spec->options.enable_overhead_profiler_tool =
+        !(value == "0" || value == "false" || value == "False");
   }
 }
 
@@ -112,7 +116,8 @@ dfabit::core::Status ExperimentConfigLoader::LoadFile(
     if (line.front() == '[' && line.back() == ']') {
       if (has_current) {
         if (current.modes.empty()) {
-          current.modes.push_back(current.options.mode.empty() ? "full" : current.options.mode);
+          current.modes.push_back(
+              current.options.mode.empty() ? "full" : current.options.mode);
         }
         specs->push_back(current);
       }
@@ -140,7 +145,8 @@ dfabit::core::Status ExperimentConfigLoader::LoadFile(
 
   if (has_current) {
     if (current.modes.empty()) {
-      current.modes.push_back(current.options.mode.empty() ? "full" : current.options.mode);
+      current.modes.push_back(
+          current.options.mode.empty() ? "full" : current.options.mode);
     }
     specs->push_back(current);
   }

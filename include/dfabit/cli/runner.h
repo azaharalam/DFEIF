@@ -24,6 +24,7 @@ struct CliOptions {
   std::vector<std::string> include_ops;
 
   bool enable_portability_tool = true;
+  bool enable_overhead_profiler_tool = true;
 };
 
 dfabit::core::Status Run(const CliOptions& options);

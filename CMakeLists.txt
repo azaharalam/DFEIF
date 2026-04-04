@@ -50,6 +50,7 @@ add_library(dfabit_core
   src/tools/tool_context.cc
   src/tools/register_builtin_tools.cc
   src/tools/builtin/portability_report_tool.cc
+  src/tools/builtin/overhead_profiler_tool.cc
   src/cli/runner.cc
   src/cli/experiment_config.cc
   src/cli/experiment_runner.cc

@@ -123,6 +123,8 @@ int main(int argc, char** argv) {
       config_path = argv[++i];
     } else if (arg == "--no-portability-tool") {
       options.enable_portability_tool = false;
+    } else if (arg == "--no-overhead-profiler-tool") {
+      options.enable_overhead_profiler_tool = false;
     } else if (arg == "--help" || arg == "-h") {
       PrintUsage();
       return 0;

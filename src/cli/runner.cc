@@ -45,6 +45,7 @@ dfabit::core::Status ConfigureContext(
   }
 
   ctx->SetProperty("active_adapter", options.backend);
+  ctx->SetProperty("run_mode", options.mode);
 
   if (!options.mlir_path.empty()) {
     ctx->SetProperty("mlir_module_path", options.mlir_path);
@@ -172,6 +173,20 @@ dfabit::core::Status AddBuiltinTools(
           "failed to create tool: portability_report"};
     }
     auto st = tool_manager->AddTool(std::move(portability_tool));
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
+  if (options.enable_overhead_profiler_tool) {
+    auto overhead_tool =
+        dfabit::tools::ToolRegistry::Instance().Create("overhead_profiler");
+    if (!overhead_tool) {
+      return {
+          dfabit::core::StatusCode::kNotFound,
+          "failed to create tool: overhead_profiler"};
+    }
+    auto st = tool_manager->AddTool(std::move(overhead_tool));
     if (!st.ok()) {
       return st;
     }
