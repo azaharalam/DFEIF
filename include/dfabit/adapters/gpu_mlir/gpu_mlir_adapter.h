@@ -1,15 +1,17 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 #include "dfabit/adapters/backend_adapter.h"
 #include "dfabit/adapters/shared/artifact_correlator.h"
 #include "dfabit/mlir/cost_model.h"
 #include "dfabit/mlir/manifest_exporter.h"
+#include "dfabit/mlir/module_instrumentor.h"
 #include "dfabit/mlir/module_loader.h"
 #include "dfabit/mlir/semantic_tagger.h"
+#include "dfabit/runtime/launch_observer.h"
 #include "dfabit/runtime/runtime_correlation.h"
 
 namespace dfabit::adapters::gpu_mlir {
@@ -78,7 +80,14 @@ class GpuMlirAdapter final : public BackendAdapter {
       dfabit::api::Context* ctx,
       const std::string& mlir_path,
       const std::string& stage,
-      dfabit::metadata::ModelDesc* model) const;
+      dfabit::metadata::ModelDesc* model,
+      dfabit::mlir::MlirModuleSnapshot* snapshot) const;
+
+  dfabit::core::Status WriteInstrumentedSnapshots(
+      const dfabit::api::Context& ctx,
+      const dfabit::mlir::MlirModuleSnapshot& snapshot,
+      const dfabit::metadata::ModelDesc& model,
+      CompileArtifactSet* compile_artifacts) const;
 
   void IndexModel(const dfabit::metadata::ModelDesc& model);
   std::string OutputPath(const dfabit::api::Context& ctx, const std::string& filename) const;
@@ -86,8 +95,10 @@ class GpuMlirAdapter final : public BackendAdapter {
   dfabit::mlir::MlirModuleLoader loader_;
   dfabit::mlir::MlirSemanticTagger tagger_;
   dfabit::mlir::MlirManifestExporter manifest_exporter_;
+  dfabit::mlir::MlirModuleInstrumentor module_instrumentor_;
   dfabit::mlir::MlirCostModel cost_model_;
   dfabit::runtime::RuntimeCorrelator runtime_correlator_;
+  dfabit::runtime::LaunchObserver launch_observer_;
   dfabit::adapters::shared::ArtifactCorrelator artifact_correlator_;
   dfabit::metadata::ModelDesc model_;
 };

@@ -18,6 +18,11 @@ struct CliOptions {
   std::string compile_report_path;
   std::string runtime_log_path;
 
+  std::string mode = "full";
+  int repeat = 1;
+  double sampling_ratio = 1.0;
+  std::vector<std::string> include_ops;
+
   bool enable_portability_tool = true;
 };
 

@@ -35,8 +35,10 @@ add_library(dfabit_core
   src/mlir/module_loader.cc
   src/mlir/semantic_tagger.cc
   src/mlir/manifest_exporter.cc
+  src/mlir/module_instrumentor.cc
   src/mlir/cost_model.cc
   src/runtime/runtime_correlation.cc
+  src/runtime/launch_observer.cc
   src/adapters/gpu_mlir/gpu_mlir_adapter.cc
   src/hidden_ir/graph_importer.cc
   src/hidden_ir/sidecar_loader.cc
@@ -49,6 +51,8 @@ add_library(dfabit_core
   src/tools/register_builtin_tools.cc
   src/tools/builtin/portability_report_tool.cc
   src/cli/runner.cc
+  src/cli/experiment_config.cc
+  src/cli/experiment_runner.cc
 )
 
 set_target_properties(dfabit_core PROPERTIES POSITION_INDEPENDENT_CODE ON)

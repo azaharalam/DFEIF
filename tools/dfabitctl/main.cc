@@ -1,18 +1,24 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
+#include "dfabit/cli/experiment_config.h"
+#include "dfabit/cli/experiment_runner.h"
 #include "dfabit/cli/runner.h"
 
 namespace {
 
 void PrintUsage() {
   std::cerr
-      << "usage:\n"
-      << "  dfabitctl --backend gpu_mlir --mlir <file> --out <dir>\n"
-      << "  dfabitctl --backend cerebras --graph <file> [--sidecar <file>] "
-         "[--compile-report <file>] [--runtime-log <file>] --out <dir>\n"
-      << "  dfabitctl --backend sambanova --graph <file> [--sidecar <file>] "
-         "[--compile-report <file>] [--runtime-log <file>] --out <dir>\n";
+      << "single run:\n"
+      << "  dfabitctl --backend gpu_mlir --mlir <file> --out <dir> [--mode full|baseline|selective|sampled]\n"
+      << "  dfabitctl --backend cerebras --graph <file> [--sidecar <file>] [--compile-report <file>] "
+         "[--runtime-log <file>] --out <dir> [--mode full|baseline|selective|sampled]\n"
+      << "  dfabitctl --backend sambanova --graph <file> [--sidecar <file>] [--compile-report <file>] "
+         "[--runtime-log <file>] --out <dir> [--mode full|baseline|selective|sampled]\n"
+      << "\n"
+      << "batch run:\n"
+      << "  dfabitctl --config <experiment.cfg>\n";
 }
 
 bool RequireValue(int argc, char** argv, int i) {
@@ -28,6 +34,7 @@ int main(int argc, char** argv) {
   }
 
   dfabit::cli::CliOptions options;
+  std::string config_path;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -74,6 +81,46 @@ int main(int argc, char** argv) {
         return 1;
       }
       options.runtime_log_path = argv[++i];
+    } else if (arg == "--mode") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --mode\n";
+        return 1;
+      }
+      options.mode = argv[++i];
+    } else if (arg == "--repeat") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --repeat\n";
+        return 1;
+      }
+      try {
+        options.repeat = std::stoi(argv[++i]);
+      } catch (...) {
+        std::cerr << "invalid value for --repeat\n";
+        return 1;
+      }
+    } else if (arg == "--sampling-ratio") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --sampling-ratio\n";
+        return 1;
+      }
+      try {
+        options.sampling_ratio = std::stod(argv[++i]);
+      } catch (...) {
+        std::cerr << "invalid value for --sampling-ratio\n";
+        return 1;
+      }
+    } else if (arg == "--include-op") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --include-op\n";
+        return 1;
+      }
+      options.include_ops.push_back(argv[++i]);
+    } else if (arg == "--config") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --config\n";
+        return 1;
+      }
+      config_path = argv[++i];
     } else if (arg == "--no-portability-tool") {
       options.enable_portability_tool = false;
     } else if (arg == "--help" || arg == "-h") {
@@ -84,6 +131,59 @@ int main(int argc, char** argv) {
       PrintUsage();
       return 1;
     }
+  }
+
+  if (!config_path.empty()) {
+    dfabit::cli::ExperimentConfigLoader loader;
+    std::vector<dfabit::cli::ExperimentSpec> specs;
+    auto st = loader.LoadFile(config_path, &specs);
+    if (!st.ok()) {
+      std::cerr << st.message() << "\n";
+      return 1;
+    }
+
+    dfabit::cli::ExperimentRunner runner;
+    std::vector<dfabit::cli::ExperimentRunRecord> records;
+    st = runner.RunSpecs(specs, &records);
+    if (!st.ok()) {
+      std::cerr << st.message() << "\n";
+      return 1;
+    }
+
+    const auto index_path = "experiment_index.csv";
+    st = runner.WriteIndexCsv(index_path, records);
+    if (!st.ok()) {
+      std::cerr << st.message() << "\n";
+      return 1;
+    }
+
+    std::cerr << "batch run completed\n";
+    return 0;
+  }
+
+  if (options.repeat > 1) {
+    std::vector<dfabit::cli::ExperimentSpec> specs(1);
+    specs[0].name = "cli_repeat";
+    specs[0].options = options;
+    specs[0].modes = {options.mode};
+
+    dfabit::cli::ExperimentRunner runner;
+    std::vector<dfabit::cli::ExperimentRunRecord> records;
+    const auto st = runner.RunSpecs(specs, &records);
+    if (!st.ok()) {
+      std::cerr << st.message() << "\n";
+      return 1;
+    }
+
+    const auto index_path = "repeat_index.csv";
+    auto write_st = runner.WriteIndexCsv(index_path, records);
+    if (!write_st.ok()) {
+      std::cerr << write_st.message() << "\n";
+      return 1;
+    }
+
+    std::cerr << "repeat run completed\n";
+    return 0;
   }
 
   const auto st = dfabit::cli::Run(options);

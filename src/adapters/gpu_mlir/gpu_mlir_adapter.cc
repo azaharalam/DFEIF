@@ -111,8 +111,14 @@ AdapterCapabilities GpuMlirAdapter::DiscoverCapabilities(const dfabit::api::Cont
   caps.partition_level_events = false;
   caps.custom_env_controls = true;
   caps.supported_stages = {"pre_fusion", "post_fusion", "pre_lowering", "post_lowering"};
-  caps.supported_artifact_types = {"mlir_module", "manifest", "compile_report", "runtime_log"};
-  caps.supported_metric_names = {"latency_ms", "throughput", "occupancy", "bytes"};
+  caps.supported_artifact_types = {
+      "mlir_module",
+      "manifest",
+      "compile_report",
+      "runtime_log",
+      "instrumented_mlir",
+      "stage_snapshot"};
+  caps.supported_metric_names = {"latency_ms", "throughput", "occupancy", "bytes", "launch_duration_ms"};
   return caps;
 }
 
@@ -157,6 +163,16 @@ dfabit::core::Status GpuMlirAdapter::PrepareArtifacts(
     runtime_artifact.path = runtime_log;
     runtime_artifact.stage = "post_lowering";
     runtime_artifacts->inputs.push_back(std::move(runtime_artifact));
+  }
+
+  const auto runtime_events = ctx->GetProperty("runtime_events_path");
+  if (!runtime_events.empty()) {
+    ArtifactRef runtime_event_artifact;
+    runtime_event_artifact.kind = ArtifactKind::kRuntimeLog;
+    runtime_event_artifact.name = "runtime_events";
+    runtime_event_artifact.path = runtime_events;
+    runtime_event_artifact.stage = "post_lowering";
+    runtime_artifacts->inputs.push_back(std::move(runtime_event_artifact));
   }
 
   return dfabit::core::Status::Ok();
@@ -204,7 +220,9 @@ dfabit::core::Status GpuMlirAdapter::CompileEnd(
   }
 
   const auto& mlir_artifact = compile_artifacts->inputs.front();
-  auto st = BuildModelFromMlir(ctx, mlir_artifact.path, mlir_artifact.stage, &model_);
+
+  dfabit::mlir::MlirModuleSnapshot snapshot;
+  auto st = BuildModelFromMlir(ctx, mlir_artifact.path, mlir_artifact.stage, &model_, &snapshot);
   if (!st.ok()) {
     return st;
   }
@@ -215,6 +233,11 @@ dfabit::core::Status GpuMlirAdapter::CompileEnd(
 
   const auto manifest_path = OutputPath(*ctx, "mlir_manifest.json");
   st = manifest_exporter_.WriteJson(model_, manifest_path);
+  if (!st.ok()) {
+    return st;
+  }
+
+  st = WriteInstrumentedSnapshots(*ctx, snapshot, model_, compile_artifacts);
   if (!st.ok()) {
     return st;
   }
@@ -330,6 +353,21 @@ dfabit::core::Status GpuMlirAdapter::CollectRuntimeMetrics(
       continue;
     }
 
+    if (artifact.name == "runtime_events") {
+      std::vector<dfabit::runtime::LaunchEventRecord> records;
+      auto st = launch_observer_.ParseFile(artifact.path, &records);
+      if (!st.ok()) {
+        return st;
+      }
+
+      auto metrics = launch_observer_.Correlate(model_, records);
+      runtime_artifacts->metrics.insert(
+          runtime_artifacts->metrics.end(),
+          std::make_move_iterator(metrics.begin()),
+          std::make_move_iterator(metrics.end()));
+      continue;
+    }
+
     const auto text = ReadFileText(artifact.path);
     if (text.empty()) {
       continue;
@@ -365,18 +403,18 @@ dfabit::core::Status GpuMlirAdapter::BuildModelFromMlir(
     dfabit::api::Context* ctx,
     const std::string& mlir_path,
     const std::string& stage,
-    dfabit::metadata::ModelDesc* model) const {
-  if (!ctx || !model) {
+    dfabit::metadata::ModelDesc* model,
+    dfabit::mlir::MlirModuleSnapshot* snapshot) const {
+  if (!ctx || !model || !snapshot) {
     return {dfabit::core::StatusCode::kInvalidArgument, "invalid BuildModelFromMlir arguments"};
   }
 
-  dfabit::mlir::MlirModuleSnapshot snapshot;
-  auto st = loader_.LoadFromFile(mlir_path, stage, &snapshot);
+  auto st = loader_.LoadFromFile(mlir_path, stage, snapshot);
   if (!st.ok()) {
     return st;
   }
 
-  st = tagger_.BuildModelDescription(snapshot, name(), model);
+  st = tagger_.BuildModelDescription(*snapshot, name(), model);
   if (!st.ok()) {
     return st;
   }
@@ -385,6 +423,46 @@ dfabit::core::Status GpuMlirAdapter::BuildModelFromMlir(
   if (!st.ok()) {
     return st;
   }
+
+  return dfabit::core::Status::Ok();
+}
+
+dfabit::core::Status GpuMlirAdapter::WriteInstrumentedSnapshots(
+    const dfabit::api::Context& ctx,
+    const dfabit::mlir::MlirModuleSnapshot& snapshot,
+    const dfabit::metadata::ModelDesc& model,
+    CompileArtifactSet* compile_artifacts) const {
+  if (!compile_artifacts) {
+    return {dfabit::core::StatusCode::kInvalidArgument, "compile_artifacts is null"};
+  }
+
+  dfabit::mlir::InstrumentedModuleSnapshot instrumented;
+  auto st = module_instrumentor_.Instrument(snapshot, model, &instrumented);
+  if (!st.ok()) {
+    return st;
+  }
+
+  const auto original_path = OutputPath(ctx, "stage_pre_lowering_original.mlir");
+  const auto instrumented_path = OutputPath(ctx, "stage_pre_lowering_instrumented.mlir");
+
+  st = module_instrumentor_.WriteSnapshot(instrumented, original_path, instrumented_path);
+  if (!st.ok()) {
+    return st;
+  }
+
+  ArtifactRef original_artifact;
+  original_artifact.kind = ArtifactKind::kText;
+  original_artifact.name = "stage_snapshot_original";
+  original_artifact.path = original_path;
+  original_artifact.stage = snapshot.stage;
+  compile_artifacts->outputs.push_back(std::move(original_artifact));
+
+  ArtifactRef instrumented_artifact;
+  instrumented_artifact.kind = ArtifactKind::kText;
+  instrumented_artifact.name = "stage_snapshot_instrumented";
+  instrumented_artifact.path = instrumented_path;
+  instrumented_artifact.stage = snapshot.stage;
+  compile_artifacts->outputs.push_back(std::move(instrumented_artifact));
 
   return dfabit::core::Status::Ok();
 }
