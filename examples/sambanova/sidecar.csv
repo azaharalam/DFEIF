@@ -1,0 +1,2 @@
+part0,12729608812427402581,compile,op=conv2d,partition=part0
+part1,14343771217918229653,compile,op=add,partition=part1

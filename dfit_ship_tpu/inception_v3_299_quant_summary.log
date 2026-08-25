@@ -1,0 +1,27 @@
+Edge TPU Compiler version 16.0.384591198
+Started a compilation timeout timer of 180 seconds.
+
+Model compiled successfully in 2881 ms.
+
+Input model: inception_v3_299_quant.tflite
+Input size: 22.88MiB
+Output model: inception_v3_299_quant_edgetpu.tflite
+Output size: 23.90MiB
+On-chip memory used for caching model parameters: 5.54MiB
+On-chip memory remaining for caching model parameters: 768.00B
+Off-chip memory used for streaming uncached model parameters: 17.87MiB
+Number of Edge TPU subgraphs: 1
+Total number of operations: 132
+Operation log: inception_v3_299_quant_edgetpu.log
+
+Operator                       Count      Status
+
+MAX_POOL_2D                    4          Mapped to Edge TPU
+QUANTIZE                       6          Mapped to Edge TPU
+SOFTMAX                        1          Mapped to Edge TPU
+CONV_2D                        95         Mapped to Edge TPU
+AVERAGE_POOL_2D                10         Mapped to Edge TPU
+RESHAPE                        1          Mapped to Edge TPU
+CONCATENATION                  15         Mapped to Edge TPU
+Compilation child process completed within timeout period.
+Compilation succeeded! 

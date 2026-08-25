@@ -1,0 +1,27 @@
+Edge TPU Compiler version 16.0.384591198
+Started a compilation timeout timer of 180 seconds.
+
+Model compiled successfully in 2320 ms.
+
+Input model: efficientnet-edgetpu-S_quant.tflite
+Input size: 5.86MiB
+Output model: efficientnet-edgetpu-S_quant_edgetpu.tflite
+Output size: 6.79MiB
+On-chip memory used for caching model parameters: 6.74MiB
+On-chip memory remaining for caching model parameters: 682.25KiB
+Off-chip memory used for streaming uncached model parameters: 0.00B
+Number of Edge TPU subgraphs: 1
+Total number of operations: 66
+Operation log: efficientnet-edgetpu-S_quant_edgetpu.log
+
+Operator                       Count      Status
+
+ADD                            12         Mapped to Edge TPU
+SOFTMAX                        1          Mapped to Edge TPU
+MEAN                           1          Mapped to Edge TPU
+DEPTHWISE_CONV_2D              11         Mapped to Edge TPU
+CONV_2D                        38         Mapped to Edge TPU
+QUANTIZE                       2          Mapped to Edge TPU
+FULLY_CONNECTED                1          Mapped to Edge TPU
+Compilation child process completed within timeout period.
+Compilation succeeded! 

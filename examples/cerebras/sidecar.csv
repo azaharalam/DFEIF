@@ -1,0 +1,2 @@
+sg0,12232624588829224635,compile,op=matmul,partition=sg0
+sg1,9430665395433322066,compile,op=relu,partition=sg1

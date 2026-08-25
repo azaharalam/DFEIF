@@ -1,0 +1,27 @@
+Edge TPU Compiler version 16.0.384591198
+Started a compilation timeout timer of 180 seconds.
+
+Model compiled successfully in 2157 ms.
+
+Input model: tf2_mobilenet_v3_edgetpu_1.0_224_ptq.tflite
+Input size: 4.51MiB
+Output model: tf2_mobilenet_v3_edgetpu_1.0_224_ptq_edgetpu.tflite
+Output size: 4.91MiB
+On-chip memory used for caching model parameters: 4.85MiB
+On-chip memory remaining for caching model parameters: 2.56MiB
+Off-chip memory used for streaming uncached model parameters: 0.00B
+Number of Edge TPU subgraphs: 1
+Total number of operations: 79
+Operation log: tf2_mobilenet_v3_edgetpu_1.0_224_ptq_edgetpu.log
+
+Operator                       Count      Status
+
+DEPTHWISE_CONV_2D              13         Mapped to Edge TPU
+QUANTIZE                       2          Mapped to Edge TPU
+CONV_2D                        46         Mapped to Edge TPU
+ADD                            15         Mapped to Edge TPU
+MEAN                           1          Mapped to Edge TPU
+RESHAPE                        1          Mapped to Edge TPU
+SOFTMAX                        1          Mapped to Edge TPU
+Compilation child process completed within timeout period.
+Compilation succeeded! 

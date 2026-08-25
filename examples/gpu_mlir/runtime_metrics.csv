@@ -1,0 +1,3 @@
+run,latency_ms,4.82,ms,0
+run,throughput,207.4,samples_per_s,0
+run,utilization,0.71,ratio,0

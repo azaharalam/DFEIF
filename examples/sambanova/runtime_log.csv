@@ -1,0 +1,7 @@
+partition,latency_ms,12.4,ms,12729608812427402581
+partition,utilization,0.63,ratio,12729608812427402581
+partition,bytes_moved,1048576,B,12729608812427402581
+partition,latency_ms,3.1,ms,14343771217918229653
+partition,utilization,0.21,ratio,14343771217918229653
+partition,bytes_moved,262144,B,14343771217918229653
+run,throughput,412.5,samples_per_s,0
