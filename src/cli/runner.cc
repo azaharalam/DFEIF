@@ -62,6 +62,36 @@ dfabit::core::Status ConfigureContext(
   ctx->SetProperty("active_adapter", options.backend);
   ctx->SetProperty("run_mode", options.mode);
 
+  if (options.backend == "edgetpu") {
+    if (!options.model_path.empty()) {
+      ctx->SetProperty("edgetpu_model_path", options.model_path);
+      ctx->mutable_run_context().SetAttribute("edgetpu_model_path", options.model_path);
+    }
+    if (!options.compile_report_path.empty()) {
+      ctx->SetProperty("edgetpu_compiler_log_path", options.compile_report_path);
+      ctx->mutable_run_context().SetAttribute(
+          "edgetpu_compiler_log_path", options.compile_report_path);
+    }
+    if (!options.runtime_log_path.empty()) {
+      ctx->SetProperty("edgetpu_runtime_log_path", options.runtime_log_path);
+      ctx->mutable_run_context().SetAttribute(
+          "edgetpu_runtime_log_path", options.runtime_log_path);
+    }
+    if (!options.compile_cmd.empty()) {
+      ctx->SetProperty("edgetpu_compile_cmd", options.compile_cmd);
+      ctx->mutable_run_context().SetAttribute("edgetpu_compile_cmd", options.compile_cmd);
+    }
+    if (!options.work_dir.empty()) {
+      ctx->SetProperty("edgetpu_work_dir", options.work_dir);
+      ctx->mutable_run_context().SetAttribute("edgetpu_work_dir", options.work_dir);
+    }
+  }
+
+  if (!options.model_dir.empty() && options.backend == "cerebras") {
+    ctx->SetProperty("cerebras_model_dir", options.model_dir);
+    ctx->mutable_run_context().SetAttribute("cerebras_model_dir", options.model_dir);
+  }
+
   if (!options.mlir_path.empty()) {
     ctx->SetProperty("mlir_module_path", options.mlir_path);
     ctx->mutable_run_context().SetAttribute("mlir_module_path", options.mlir_path);
@@ -162,7 +192,8 @@ dfabit::core::Status BuildRunConfig(
     return {dfabit::core::StatusCode::kInvalidArgument, "output_dir is empty"};
   }
 
-  run_cfg->run_id = options.backend + "_" + options.mode + "_run";
+  run_cfg->run_id =
+      options.backend + "_" + options.mode + "_" + options.detail + "_run";
   run_cfg->model_name = options.backend + "_model";
   run_cfg->backend.backend_name = options.backend;
   run_cfg->backend.provider_name = options.backend;
@@ -173,7 +204,13 @@ dfabit::core::Status BuildRunConfig(
   run_cfg->output.program_analysis_csv_path =
       (std::filesystem::path(options.output_dir) / "program_analysis.csv").string();
 
-  run_cfg->policy.detail_level = dfabit::core::DetailLevel::kFull;
+  if (options.detail == "ids") {
+    run_cfg->policy.detail_level = dfabit::core::DetailLevel::kIds;
+  } else if (options.detail == "lite") {
+    run_cfg->policy.detail_level = dfabit::core::DetailLevel::kLite;
+  } else {
+    run_cfg->policy.detail_level = dfabit::core::DetailLevel::kFull;
+  }
 
   if (options.mode == "baseline") {
     run_cfg->trace.enabled = false;
@@ -482,6 +519,13 @@ dfabit::core::Status ValidateOptions(const CliOptions& options) {
     return {dfabit::core::StatusCode::kInvalidArgument, "--repeat must be >= 1"};
   }
 
+  if (options.detail != "ids" && options.detail != "lite" &&
+      options.detail != "full") {
+    return {
+        dfabit::core::StatusCode::kInvalidArgument,
+        "unsupported --detail: " + options.detail + " (expected ids|lite|full)"};
+  }
+
   if (options.mode != "baseline" &&
       options.mode != "full" &&
       options.mode != "selective" &&
@@ -528,12 +572,25 @@ dfabit::core::Status ValidateOptions(const CliOptions& options) {
       return {dfabit::core::StatusCode::kInvalidArgument, "gpu_mlir requires --mlir"};
     }
   } else if (options.backend == "cerebras") {
-    if (options.graph_path.empty()) {
-      return {dfabit::core::StatusCode::kInvalidArgument, "cerebras requires --graph"};
+    if (options.graph_path.empty() && options.model_dir.empty()) {
+      return {
+          dfabit::core::StatusCode::kInvalidArgument,
+          "cerebras requires --graph or --model-dir"};
     }
   } else if (options.backend == "sambanova") {
     if (options.graph_path.empty()) {
       return {dfabit::core::StatusCode::kInvalidArgument, "sambanova requires --graph"};
+    }
+  } else if (options.backend == "edgetpu") {
+    if (options.model_path.empty()) {
+      return {
+          dfabit::core::StatusCode::kInvalidArgument,
+          "edgetpu requires --model pointing at a .tflite file"};
+    }
+    if (!dfabit::core::IsRegularFile(options.model_path)) {
+      return {
+          dfabit::core::StatusCode::kNotFound,
+          "model file not found: " + options.model_path};
     }
   } else {
     return {
@@ -599,7 +656,8 @@ dfabit::core::Status Run(const CliOptions& options) {
         run_cfg.run_id,
         options.backend,
         options.mode,
-        run_cfg.trace.buffer_capacity);
+        run_cfg.trace.buffer_capacity,
+        run_cfg.policy.detail_level);
     if (!st.ok()) {
       return st;
     }
@@ -697,6 +755,45 @@ dfabit::core::Status Run(const CliOptions& options) {
         {{"output_count", std::to_string(compile_artifacts.outputs.size())}});
     if (!st.ok()) {
       return st;
+    }
+  }
+
+  // Operator-level semantic events. This is the instrumentation the framework
+  // claims to provide: one event per operator carrying its stable identity, and
+  // -- at higher detail levels -- its dialect, stage and attribute payload.
+  //
+  // The detail level genuinely changes the work done per operator, not just the
+  // bytes written: kIds emits identity alone, kLite adds stage/dialect, kFull
+  // serializes every attribute the adapter recovered from the compiler.
+  if (run_cfg.trace.enabled) {
+    const auto detail = run_cfg.policy.detail_level;
+    for (const auto& op : ctx.metadata_ops()) {
+      std::unordered_map<std::string, std::string> payload;
+
+      if (detail != dfabit::core::DetailLevel::kIds) {
+        payload["op_name"] = op.op_name;
+        payload["dialect"] = op.dialect;
+      }
+
+      if (detail == dfabit::core::DetailLevel::kFull) {
+        for (const auto& kv : op.attributes) {
+          payload[kv.first] = kv.second;
+        }
+        payload["estimated_flops"] = std::to_string(op.estimated_flops);
+        payload["estimated_bytes"] = std::to_string(op.estimated_bytes);
+        payload["input_count"] = std::to_string(op.inputs.size());
+        payload["output_count"] = std::to_string(op.outputs.size());
+      }
+
+      st = tracer.Emit(
+          dfabit::trace::EventKind::kSubgraph,
+          "operator",
+          op.stable_id,
+          op.stage_tag.empty() ? "compile" : op.stage_tag,
+          std::move(payload));
+      if (!st.ok()) {
+        return st;
+      }
     }
   }
 

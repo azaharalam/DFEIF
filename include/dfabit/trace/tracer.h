@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "dfabit/adapters/artifacts.h"
+#include "dfabit/core/framework_config.h"
 #include "dfabit/core/status.h"
 #include "dfabit/trace/event.h"
 #include "dfabit/trace/trace_buffer.h"
@@ -24,7 +25,19 @@ class Tracer {
       const std::string& run_id,
       const std::string& provider,
       const std::string& mode,
-      std::size_t buffer_capacity);
+      std::size_t buffer_capacity,
+      dfabit::core::DetailLevel detail_level = dfabit::core::DetailLevel::kFull);
+
+  // Detail level controls how much each event carries and which events are
+  // emitted at all. This is the knob that makes instrumentation depth cost
+  // measurably different amounts:
+  //
+  //   kIds  - identity only. Stable id, kind, stage. No payload map is built,
+  //           and per-metric events are suppressed entirely.
+  //   kLite - identity plus lifecycle boundaries and aggregate counts, but no
+  //           per-metric event stream.
+  //   kFull - every event with its complete attribute payload.
+  dfabit::core::DetailLevel detail_level() const { return detail_level_; }
 
   bool enabled() const { return writer_ != nullptr; }
 
@@ -55,6 +68,7 @@ class Tracer {
   std::string provider_;
   std::string mode_;
   TraceStats stats_cache_;
+  dfabit::core::DetailLevel detail_level_ = dfabit::core::DetailLevel::kFull;
 };
 
 }  // namespace dfabit::trace

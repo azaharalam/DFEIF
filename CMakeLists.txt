@@ -38,6 +38,7 @@ add_library(dfabit_core
   src/adapters/shared/runtime_log_parser.cc
   src/adapters/shared/artifact_correlator.cc
   src/adapters/cerebras/cerebras_workflow.cc
+  src/adapters/cerebras/cirh_parser.cc
   src/adapters/sambanova/sambanova_workflow.cc
   src/mlir/module_loader.cc
   src/mlir/semantic_tagger.cc
@@ -47,6 +48,7 @@ add_library(dfabit_core
   src/runtime/runtime_correlation.cc
   src/runtime/launch_observer.cc
   src/adapters/gpu_mlir/gpu_mlir_adapter.cc
+  src/adapters/edgetpu/edgetpu_adapter.cc
   src/hidden_ir/graph_importer.cc
   src/hidden_ir/sidecar_loader.cc
   src/hidden_ir/partition_tracker.cc

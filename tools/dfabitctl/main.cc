@@ -18,6 +18,11 @@ void PrintUsage() {
       << "  dfabitctl --backend sambanova --graph <file> [--sidecar <file>] [--compile-report <file>] "
          "[--runtime-log <file>] [--work-dir <dir>] [--compile-cmd <cmd>] [--run-cmd <cmd>] "
          "--out <dir> [--mode full|baseline|selective|sampled]\n"
+      << "  dfabitctl --backend edgetpu --model <file.tflite> [--compile-report <log>] "
+         "[--runtime-log <csv>] --out <dir> [--mode full|baseline|selective|sampled]\n"
+      << "\n"
+      << "  --model-dir <dir>        cerebras: discover cirh.mlir from the compile\n"
+      << "  --detail ids|lite|full   instrumentation depth (default full)\n"
       << "\n"
       << "batch run:\n"
       << "  dfabitctl --config <experiment.cfg>\n";
@@ -37,6 +42,11 @@ int main(int argc, char** argv) {
 
   dfabit::cli::CliOptions options;
   std::string config_path;
+
+  // Number of times to execute the session inside this process. Process launch
+  // costs ~4 ms, which swamps the instrumentation being measured; repeating
+  // in-process amortizes that away so the timing reflects the framework.
+  int repeat_session = 1;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -101,6 +111,35 @@ int main(int argc, char** argv) {
         return 1;
       }
       options.run_cmd = argv[++i];
+    } else if (arg == "--model-dir") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --model-dir\n";
+        return 1;
+      }
+      options.model_dir = argv[++i];
+    } else if (arg == "--model") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --model\n";
+        return 1;
+      }
+      options.model_path = argv[++i];
+    } else if (arg == "--repeat-session") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --repeat-session\n";
+        return 1;
+      }
+      try {
+        repeat_session = std::stoi(argv[++i]);
+      } catch (...) {
+        std::cerr << "invalid value for --repeat-session\n";
+        return 1;
+      }
+    } else if (arg == "--detail") {
+      if (!RequireValue(argc, argv, i)) {
+        std::cerr << "missing value for --detail\n";
+        return 1;
+      }
+      options.detail = argv[++i];
     } else if (arg == "--mode") {
       if (!RequireValue(argc, argv, i)) {
         std::cerr << "missing value for --mode\n";
@@ -212,10 +251,17 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  const auto st = dfabit::cli::Run(options);
-  if (!st.ok()) {
-    std::cerr << st.message() << "\n";
+  if (repeat_session < 1) {
+    std::cerr << "--repeat-session must be >= 1\n";
     return 1;
+  }
+
+  for (int rep = 0; rep < repeat_session; ++rep) {
+    const auto st = dfabit::cli::Run(options);
+    if (!st.ok()) {
+      std::cerr << st.message() << "\n";
+      return 1;
+    }
   }
 
   std::cerr << "run completed successfully\n";

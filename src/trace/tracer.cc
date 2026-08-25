@@ -15,7 +15,8 @@ dfabit::core::Status Tracer::Open(
     const std::string& run_id,
     const std::string& provider,
     const std::string& mode,
-    std::size_t buffer_capacity) {
+    std::size_t buffer_capacity,
+    dfabit::core::DetailLevel detail_level) {
   if (trace_path.empty()) {
     return {dfabit::core::StatusCode::kInvalidArgument, "trace_path is empty"};
   }
@@ -33,6 +34,7 @@ dfabit::core::Status Tracer::Open(
   provider_ = provider;
   mode_ = mode;
   stats_cache_ = {};
+  detail_level_ = detail_level;
   return dfabit::core::Status::Ok();
 }
 
@@ -46,7 +48,15 @@ dfabit::core::Status Tracer::Emit(
     return dfabit::core::Status::Ok();
   }
 
-  payload.emplace("session_id", session_id_);
+  // At kIds the payload is dropped before it is ever serialized. The event
+  // still carries its stable id, kind and stage, which is what identity-only
+  // tracing means -- but none of the per-event attribute serialization cost is
+  // paid, and that difference is the point of the level.
+  if (detail_level_ == dfabit::core::DetailLevel::kIds) {
+    payload.clear();
+  } else {
+    payload.emplace("session_id", session_id_);
+  }
 
   Event e;
   e.ts_ns = NowNs();
@@ -67,6 +77,22 @@ dfabit::core::Status Tracer::Emit(
 dfabit::core::Status Tracer::EmitMetrics(
     const std::vector<dfabit::adapters::MetricSample>& metrics,
     const std::string& fallback_stage) {
+  // The per-metric event stream is the bulk of trace volume. kIds suppresses it
+  // outright; kLite replaces it with a single count so the trace still records
+  // that metrics existed without serializing each one.
+  if (detail_level_ == dfabit::core::DetailLevel::kIds) {
+    return dfabit::core::Status::Ok();
+  }
+
+  if (detail_level_ == dfabit::core::DetailLevel::kLite) {
+    return Emit(
+        EventKind::kMetric,
+        "metrics_summary",
+        0,
+        fallback_stage,
+        {{"metric_count", std::to_string(metrics.size())}});
+  }
+
   for (const auto& metric : metrics) {
     std::unordered_map<std::string, std::string> payload = metric.attributes;
     payload["value"] = std::to_string(metric.value);

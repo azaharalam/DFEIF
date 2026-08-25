@@ -2,9 +2,11 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "dfabit/adapters/backend_adapter.h"
 #include "dfabit/adapters/cerebras/cerebras_workflow.h"
+#include "dfabit/adapters/cerebras/cirh_parser.h"
 #include "dfabit/adapters/shared/artifact_correlator.h"
 #include "dfabit/adapters/shared/compile_report_parser.h"
 #include "dfabit/adapters/shared/runtime_log_parser.h"
@@ -93,6 +95,8 @@ class CerebrasAdapter final : public BackendAdapter {
   dfabit::adapters::shared::CompileReportParser compile_report_parser_;
   dfabit::adapters::shared::RuntimeLogParser runtime_log_parser_;
   CerebrasWorkflow workflow_;
+  CirhParser cirh_parser_;
+  std::vector<CirhOp> cirh_ops_;
   dfabit::metadata::ModelDesc model_;
 };
 

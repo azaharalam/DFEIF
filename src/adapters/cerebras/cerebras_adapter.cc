@@ -86,7 +86,10 @@ dfabit::core::Status CerebrasAdapter::PrepareArtifacts(
   runtime_artifacts->metrics.clear();
 
   const auto graph_path = DetectPath(*ctx, "cerebras_graph_path");
-  if (graph_path.empty()) {
+  const auto md = ctx->GetProperty("cerebras_model_dir").empty()
+      ? ctx->run_context().GetAttribute("cerebras_model_dir")
+      : ctx->GetProperty("cerebras_model_dir");
+  if (graph_path.empty() && md.empty()) {
     return {dfabit::core::StatusCode::kInvalidArgument, "cerebras_graph_path is not set"};
   }
 
@@ -164,19 +167,104 @@ dfabit::core::Status CerebrasAdapter::CompileEnd(
   if (!ctx || !compile_artifacts) {
     return {dfabit::core::StatusCode::kInvalidArgument, "invalid CompileEnd arguments"};
   }
-  if (compile_artifacts->inputs.empty()) {
-    return {dfabit::core::StatusCode::kInvalidArgument, "compile inputs are empty"};
-  }
-
   auto st = workflow_.MaybeRunCompile(ctx, compile_artifacts);
   if (!st.ok()) {
     return st;
   }
 
-  const auto& graph_artifact = compile_artifacts->inputs.front();
-  st = BuildModel(ctx, graph_artifact.path, graph_artifact.stage);
-  if (!st.ok()) {
-    return st;
+  // The compile has now run. When a model directory was given, build the
+  // semantic model from the IR this compile emitted rather than from a graph
+  // supplied by the caller: instrumenting a compile means observing what that
+  // compile produced, not reading files an earlier one left behind.
+  const auto cerebras_model_dir = ctx->GetProperty("cerebras_model_dir").empty()
+      ? ctx->run_context().GetAttribute("cerebras_model_dir")
+      : ctx->GetProperty("cerebras_model_dir");
+
+  if (!cerebras_model_dir.empty()) {
+    const auto cirh_files = CirhParser::FindAllCirh(cerebras_model_dir);
+    if (cirh_files.empty()) {
+      return {
+          dfabit::core::StatusCode::kNotFound,
+          "no cirh.mlir found under model dir after compile: " + cerebras_model_dir};
+    }
+
+    // Parse every executor. Each carries its own graph -- a training graph and
+    // an eval graph are separate compilations of the same model -- so metrics
+    // are tagged with the executor they came from rather than summed. The
+    // semantic model is taken from the largest graph, which is the one that
+    // describes the work the compile was actually for.
+    std::size_t largest = 0;
+    std::string largest_path;
+
+    for (const auto& path : cirh_files) {
+      std::vector<CirhOp> ops;
+      st = cirh_parser_.ParseFile(path, &ops);
+      if (!st.ok()) {
+        return st;
+      }
+      if (ops.empty()) {
+        continue;
+      }
+
+      const auto executor =
+          std::filesystem::path(path).parent_path().filename().string();
+
+      ArtifactRef ir;
+      ir.kind = ArtifactKind::kGraphIr;
+      ir.name = "cerebras_cirh_mlir_" + executor;
+      ir.path = path;
+      ir.stage = "compile";
+      ir.attributes["format"] = "cirh_mlir";
+      ir.attributes["executor"] = executor;
+      compile_artifacts->outputs.push_back(std::move(ir));
+
+      auto exec_metrics = CirhParser::ToMetricSamples(ops);
+      for (auto& m : exec_metrics) {
+        m.attributes["executor"] = executor;
+      }
+      compile_artifacts->metrics.insert(
+          compile_artifacts->metrics.end(),
+          std::make_move_iterator(exec_metrics.begin()),
+          std::make_move_iterator(exec_metrics.end()));
+
+      if (ops.size() > largest) {
+        largest = ops.size();
+        largest_path = path;
+        cirh_ops_ = std::move(ops);
+      }
+    }
+
+    if (cirh_ops_.empty()) {
+      return {
+          dfabit::core::StatusCode::kInternal,
+          "every cirh.mlir parsed to zero operators under: " + cerebras_model_dir};
+    }
+
+    model_ = CirhParser::ToModel(
+        cirh_ops_,
+        std::filesystem::path(largest_path).parent_path().filename().string());
+    IndexModel();
+
+    {
+      MetricSample m;
+      m.name = "cirh_executors";
+      m.value = static_cast<double>(cirh_files.size());
+      m.unit = "count";
+      m.stage = "compile";
+      m.attributes["source"] = "cirh_mlir";
+      compile_artifacts->metrics.push_back(std::move(m));
+    }
+
+    ctx->SetProperty("cerebras_cirh_path", largest_path);
+  } else {
+    if (compile_artifacts->inputs.empty()) {
+      return {dfabit::core::StatusCode::kInvalidArgument, "compile inputs are empty"};
+    }
+    const auto& graph_artifact = compile_artifacts->inputs.front();
+    st = BuildModel(ctx, graph_artifact.path, graph_artifact.stage);
+    if (!st.ok()) {
+      return st;
+    }
   }
 
   for (const auto& artifact : compile_artifacts->outputs) {

@@ -13,6 +13,13 @@ struct CliOptions {
 
   std::string mlir_path;
 
+  // Edge TPU: path to the .tflite model (compiled or plain).
+  std::string model_path;
+
+  // Cerebras: directory a compile writes into; the IR it emits is
+  // discovered there after the compile runs.
+  std::string model_dir;
+
   std::string graph_path;
   std::string sidecar_path;
   std::string compile_report_path;
@@ -23,6 +30,10 @@ struct CliOptions {
   std::string run_cmd;
 
   std::string mode = "full";
+
+  // Instrumentation depth: ids | lite | full. Independent of --mode,
+  // which selects the policy (baseline/sampled/selective/full).
+  std::string detail = "full";
   int repeat = 1;
   double sampling_ratio = 1.0;
   std::vector<std::string> include_ops;

@@ -2,6 +2,7 @@
 
 #include "dfabit/adapters/backend_registry.h"
 #include "dfabit/adapters/cerebras/cerebras_adapter.h"
+#include "dfabit/adapters/edgetpu/edgetpu_adapter.h"
 #include "dfabit/adapters/gpu_mlir/gpu_mlir_adapter.h"
 #include "dfabit/adapters/sambanova/sambanova_adapter.h"
 
@@ -30,6 +31,15 @@ dfabit::core::Status RegisterBuiltinAdapters() {
     const auto st = BackendRegistry::Instance().Register(
         "sambanova",
         &dfabit::adapters::sambanova::CreateSambaNovaAdapter);
+    if (!st.ok()) {
+      return st;
+    }
+  }
+
+  if (!BackendRegistry::Instance().HasAdapter("edgetpu")) {
+    const auto st = BackendRegistry::Instance().Register(
+        "edgetpu",
+        &dfabit::adapters::edgetpu::CreateEdgeTpuAdapter);
     if (!st.ok()) {
       return st;
     }

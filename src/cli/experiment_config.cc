@@ -64,6 +64,10 @@ void ApplyKeyValue(
     spec->options.compile_cmd = value;
   } else if (key == "run_cmd") {
     spec->options.run_cmd = value;
+  } else if (key == "model") {
+    spec->options.model_path = value;
+  } else if (key == "detail") {
+    spec->options.detail = value;
   } else if (key == "mode") {
     spec->options.mode = value;
   } else if (key == "modes") {
