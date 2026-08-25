@@ -19,6 +19,14 @@ bool RequirePath(const std::string& path) {
   return true;
 }
 
+bool RequireAbsent(const std::string& path) {
+  if (std::filesystem::exists(path)) {
+    std::cerr << "path should not exist: " << path << "\n";
+    return false;
+  }
+  return true;
+}
+
 bool RunGpuSmoke() {
   dfabit::cli::CliOptions options;
   options.backend = "gpu_mlir";
@@ -34,7 +42,12 @@ bool RunGpuSmoke() {
   }
 
   return RequirePath("test_out/gpu/reports/runtime_metrics.csv") &&
-         RequirePath("test_out/gpu/tools/overhead_profiler/overhead_summary.csv") &&
+         // No --baseline-run-cmd was given, so nothing measured overhead. The
+         // framework must therefore produce no overhead artifacts at all, and
+         // must record why. Asserting the absence is the point: an earlier
+         // revision filled these in from hardcoded constants.
+         RequireAbsent("test_out/gpu/tools/overhead_profiler/overhead_summary.csv") &&
+         RequirePath("test_out/gpu/reports/overhead_not_measured.txt") &&
          RequirePath("test_out/gpu/tools/semantic_attribution/semantic_attribution_summary.csv") &&
          RequirePath("test_out/gpu/tools/dataflow_memory_proxy/dataflow_memory_proxy_summary.csv");
 }

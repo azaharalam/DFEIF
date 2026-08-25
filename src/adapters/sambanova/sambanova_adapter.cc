@@ -1,5 +1,7 @@
 #include "dfabit/adapters/sambanova/sambanova_adapter.h"
 
+#include <cstdlib>
+
 #include <chrono>
 #include <filesystem>
 #include <utility>
@@ -46,18 +48,53 @@ dfabit::core::Status SambaNovaAdapter::InitializeSession(dfabit::api::Context* c
 }
 
 AdapterCapabilities SambaNovaAdapter::DiscoverCapabilities(const dfabit::api::Context& ctx) const {
-  (void)ctx;
   AdapterCapabilities caps;
+
+  // Every flag below is observed, not assumed. A capability report that claims
+  // profiler metrics and environment controls on a machine with no SambaNova
+  // stack is worse than no report: a portability study would record the
+  // backend as fully instrumentable when nothing was ever reachable.
+  const auto present = [&ctx](const char* key) {
+    auto path = ctx.GetProperty(key);
+    if (path.empty()) path = ctx.run_context().GetAttribute(key);
+    if (path.empty()) return false;
+    std::error_code ec;
+    return std::filesystem::is_regular_file(path, ec);
+  };
+
+  const bool has_graph = present("sambanova_graph_path");
+  const bool has_sidecar = present("sambanova_sidecar_path");
+  const bool has_compile_report = present("sambanova_compile_report_path");
+  const bool has_runtime_log = present("sambanova_runtime_log_path");
+
+  // A reachable SambaFlow stack, rather than merely a file someone copied here.
+  std::error_code ec;
+  const bool sdk_present =
+      std::filesystem::is_directory("/opt/sambaflow", ec) ||
+      std::getenv("SAMBAFLOW_HOME") != nullptr;
+
+  // SambaNova exposes no MLIR or LLVM IR to us on any machine; these two are
+  // architectural facts about the backend rather than probe results.
   caps.visible_mlir = false;
   caps.visible_llvm = false;
-  caps.visible_graph_ir = true;
-  caps.compile_report_available = true;
-  caps.runtime_log_available = true;
-  caps.profiler_metrics_available = true;
+
+  caps.visible_graph_ir = has_graph;
+  caps.compile_report_available = has_compile_report;
+  caps.runtime_log_available = has_runtime_log;
+
+  // Profiler metrics need both a log to read and a stack that could have
+  // produced one.
+  caps.profiler_metrics_available = has_runtime_log && sdk_present;
+
+  // Per-operator runtime records are not recoverable from the artifacts this
+  // backend emits, so this stays false regardless of what is present.
   caps.op_level_events = false;
-  caps.subgraph_level_events = true;
-  caps.partition_level_events = true;
-  caps.custom_env_controls = true;
+
+  // Partition boundaries come from the sidecar mapping symbols to stable ids.
+  caps.subgraph_level_events = has_sidecar;
+  caps.partition_level_events = has_sidecar;
+
+  caps.custom_env_controls = sdk_present;
   caps.supported_stages = {"compile", "load", "run", "partition"};
   caps.supported_artifact_types = {"graph_ir", "manifest", "compile_report", "runtime_log", "profile"};
   caps.supported_metric_names = {

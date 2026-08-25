@@ -312,94 +312,18 @@ dfabit::core::Status EnsureOverheadMetrics(
     return {dfabit::core::StatusCode::kInvalidArgument, "runtime_artifacts is null"};
   }
 
-  if (!HasMetric(runtime_artifacts->metrics, "event_count")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "event_count";
-    m.value = static_cast<double>(runtime_artifacts->metrics.size());
-    m.unit = "count";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "trace_bytes")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "trace_bytes";
-    m.value = options.mode == "baseline" ? 0.0 : 65536.0;
-    m.unit = "B";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "baseline_latency_ms")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "baseline_latency_ms";
-    m.value = 10.0;
-    m.unit = "ms";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "instrumented_latency_ms")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "instrumented_latency_ms";
-    if (options.mode == "baseline") {
-      m.value = 10.0;
-    } else if (options.mode == "sampled") {
-      m.value = 10.3;
-    } else if (options.mode == "selective") {
-      m.value = 10.5;
-    } else {
-      m.value = 10.8;
-    }
-    m.unit = "ms";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "flush_latency_ms")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "flush_latency_ms";
-    m.value = options.mode == "baseline" ? 0.0 : 0.2;
-    m.unit = "ms";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "dropped_rate")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "dropped_rate";
-    m.value = 0.0;
-    m.unit = "ratio";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "throughput_baseline")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "throughput_baseline";
-    m.value = 100.0;
-    m.unit = "items_per_s";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
-  if (!HasMetric(runtime_artifacts->metrics, "throughput_instrumented")) {
-    dfabit::adapters::MetricSample m;
-    m.name = "throughput_instrumented";
-    if (options.mode == "baseline") {
-      m.value = 100.0;
-    } else if (options.mode == "sampled") {
-      m.value = 97.0;
-    } else if (options.mode == "selective") {
-      m.value = 95.0;
-    } else {
-      m.value = 92.0;
-    }
-    m.unit = "items_per_s";
-    m.stage = "run";
-    runtime_artifacts->metrics.push_back(std::move(m));
-  }
-
+  // This function previously supplied default values for every metric an
+  // adapter had not reported: baseline_latency_ms 10.0, instrumented latency
+  // 10.3/10.5/10.8 by mode, trace_bytes 65536, throughput 100 falling to 92.
+  // The overhead engine then divided those constants and reported an 8%
+  // slowdown, identically, for every backend and workload -- including runs
+  // where no model executed and no device was present.
+  //
+  // Nothing is substituted here now. A metric that was not measured is absent,
+  // the overhead bundle is skipped, and reports/overhead_not_measured.txt says
+  // why. Overhead figures require --baseline-run-cmd, which supplies a real
+  // uninstrumented arm to compare against.
+  (void)options;
   return dfabit::core::Status::Ok();
 }
 
@@ -466,6 +390,19 @@ dfabit::core::Status WriteBundleOutputs(
   const bool has_overhead_inputs =
       HasMetric(runtime_artifacts.metrics, "baseline_latency_ms") &&
       HasMetric(runtime_artifacts.metrics, "instrumented_latency_ms");
+
+  if (!has_overhead_inputs) {
+    std::ofstream note((reports_dir / "overhead_not_measured.txt").string());
+    if (note.is_open()) {
+      note << "No overhead analysis was produced for this run.\n\n"
+           << "baseline_latency_ms and instrumented_latency_ms were not present\n"
+           << "in the runtime metrics, which means no paired A/B measurement was\n"
+           << "run. Pass --baseline-run-cmd to measure overhead against a real\n"
+           << "uninstrumented execution.\n\n"
+           << "Slowdown figures are never synthesised when a measurement is\n"
+           << "absent.\n";
+    }
+  }
 
   if (has_overhead_inputs) {
     dfabit::analysis::OverheadEngine overhead_engine;

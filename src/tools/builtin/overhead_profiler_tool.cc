@@ -9,6 +9,19 @@
 
 namespace dfabit::tools::builtin {
 
+namespace {
+
+bool HasMetric(
+    const std::vector<dfabit::adapters::MetricSample>& metrics,
+    const std::string& name) {
+  for (const auto& metric : metrics) {
+    if (metric.name == name) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
 std::string OverheadProfilerTool::name() const {
   return "overhead_profiler";
 }
@@ -126,6 +139,17 @@ dfabit::core::Status OverheadProfilerTool::OnRunEnd(
   }
 
   run_metrics_ = runtime_artifacts.metrics;
+
+  // Only record a sample when a paired A/B measurement supplied both arms.
+  // Without them an OverheadSample defaults its latencies to zero and the
+  // engine faithfully reports a 0% slowdown for a run that was never measured,
+  // which reads as a result rather than as an absence.
+  const bool has_paired_measurement =
+      HasMetric(runtime_artifacts.metrics, "baseline_latency_ms") &&
+      HasMetric(runtime_artifacts.metrics, "instrumented_latency_ms");
+  if (!has_paired_measurement) {
+    return dfabit::core::Status::Ok();
+  }
 
   const auto& cfg = ctx->run_context().config();
   const std::string backend_name = cfg.backend.backend_name.empty()
