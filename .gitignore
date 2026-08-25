@@ -82,3 +82,16 @@ delegate_cache/
 # =========================
 tmp/
 scratch/
+.venv-dfabit/
+build/
+build-static/
+results/
+test_out/
+artifacts/
+datasets/
+*.tar.gz
+*.pt
+*.onnx
+*.tflite
+*.npy
+yolov5nu_saved_model/
