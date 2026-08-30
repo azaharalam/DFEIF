@@ -1,5 +1,7 @@
 #include "dfabit/adapters/edgetpu/edgetpu_adapter.h"
 
+#include "dfabit/adapters/edgetpu/edgetpu_flatbuffer.h"
+
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -164,6 +166,9 @@ class EdgeTpuAdapter final : public BackendAdapter {
   // Turns the operator table into a semantic model so tools that expect an op
   // list have one. Counts come from the compiler, not from guesses.
   void BuildModelFromOperators();
+  void BuildModelFromGraph(
+      const TfLiteGraph& graph,
+      const std::string& source_path);
 
   EdgeTpuCompilerLogParser compiler_log_parser_;
   dfabit::adapters::shared::RuntimeLogParser runtime_log_parser_;
@@ -808,11 +813,139 @@ dfabit::core::Status EdgeTpuAdapter::CompileEnd(
         std::make_move_iterator(metrics.end()));
   }
 
-  BuildModelFromOperators();
+  // Prefer the graph as written over the compiler's summary table. The report
+  // groups operators by type and carries no tensor shapes, so tensor lifetimes
+  // cannot be recovered from it; the pre-compilation model still holds the full
+  // operator list. When that file is not present beside the compiled one, the
+  // summary table is the only source and the model degrades to type-level
+  // granularity rather than failing.
+  auto model_hint = ctx->GetProperty("edgetpu_model_resolved");
+  const auto source_model =
+      TfLiteFlatBufferReader::DeriveSourceModelPath(model_hint);
+
+  bool built_from_graph = false;
+  if (!source_model.empty()) {
+    TfLiteGraph graph;
+    TfLiteFlatBufferReader reader;
+    if (reader.Read(source_model, &graph).ok() && !graph.ops.empty()) {
+      BuildModelFromGraph(graph, source_model);
+      built_from_graph = true;
+
+      MetricSample params;
+      params.name = "model_parameter_bytes";
+      params.value = graph.parameter_bytes;
+      params.unit = "B";
+      params.stage = "compile";
+      params.attributes["source"] = "tflite_model";
+      compile_artifacts->metrics.push_back(std::move(params));
+
+      ArtifactRef src;
+      src.kind = ArtifactKind::kGraphIr;
+      src.name = "edgetpu_source_model";
+      src.path = source_model;
+      src.stage = "compile";
+      compile_artifacts->outputs.push_back(std::move(src));
+    }
+  }
+  if (!built_from_graph) {
+    BuildModelFromOperators();
+  }
+
   ctx->SetMetadataOps(model_.ops);
   ctx->mutable_run_context().SetAttribute("graph_name", model_.graph_name);
 
   return dfabit::core::Status::Ok();
+}
+
+void EdgeTpuAdapter::BuildModelFromGraph(
+    const TfLiteGraph& graph,
+    const std::string& source_path) {
+  model_.ops.clear();
+  model_.backend_name = name();
+  model_.graph_name = std::filesystem::path(source_path).stem().string();
+  model_.model_name = model_.graph_name;
+
+  // Mapping status is available per operator TYPE only, from the compiler
+  // report. Each operator inherits its type's status: accurate when a type maps
+  // uniformly, approximate when the compiler split a type across the boundary.
+  // The report does not say which instances fell back, so no finer attribution
+  // is possible from it.
+  std::unordered_map<std::string, std::string> status_by_type;
+  std::unordered_map<std::string, bool> mapped_by_type;
+  for (const auto& op : operators_) {
+    if (op.mapped_to_tpu ||
+        status_by_type.find(op.op_name) == status_by_type.end()) {
+      status_by_type[op.op_name] = op.status;
+      mapped_by_type[op.op_name] = op.mapped_to_tpu;
+    }
+  }
+
+  const dfabit::metadata::StableIdAssigner assigner;
+
+  for (std::size_t i = 0; i < graph.ops.size(); ++i) {
+    const auto& op = graph.ops[i];
+    dfabit::metadata::OpDesc desc;
+    desc.op_name = op.op_name;
+    desc.dialect = "tflite";
+
+    const auto mapped = mapped_by_type.find(op.op_name);
+    desc.stage_tag = (mapped != mapped_by_type.end() && !mapped->second)
+                         ? "cpu_fallback"
+                         : "edgetpu";
+
+    const auto status = status_by_type.find(op.op_name);
+    if (status != status_by_type.end()) {
+      desc.attributes["status"] = status->second;
+    }
+    desc.attributes["op_index"] = std::to_string(i);
+
+    double result_bytes = 0.0;
+    double footprint = 0.0;
+
+    for (const auto index : op.inputs) {
+      if (index < 0 ||
+          static_cast<std::size_t>(index) >= graph.tensors.size()) {
+        continue;
+      }
+      const auto& t = graph.tensors[index];
+      footprint += t.bytes;
+      // Constants stay out of the def-use chain. A weight is live for the whole
+      // graph and would dominate any liveness figure, hiding the activation
+      // behaviour that varies between models.
+      if (t.is_constant) continue;
+      dfabit::metadata::TensorDesc in;
+      in.name = t.name;
+      in.dtype = t.dtype;
+      in.shape = t.shape;
+      desc.inputs.push_back(std::move(in));
+    }
+
+    for (const auto index : op.outputs) {
+      if (index < 0 ||
+          static_cast<std::size_t>(index) >= graph.tensors.size()) {
+        continue;
+      }
+      const auto& t = graph.tensors[index];
+      footprint += t.bytes;
+      result_bytes += t.bytes;
+      dfabit::metadata::TensorDesc out;
+      out.name = t.name;
+      out.dtype = t.dtype;
+      out.shape = t.shape;
+      desc.outputs.push_back(std::move(out));
+    }
+
+    desc.estimated_bytes = static_cast<std::int64_t>(footprint);
+    desc.attributes["result_bytes"] =
+        std::to_string(static_cast<long long>(result_bytes));
+
+    desc.stable_id = assigner.Assign(
+        "hidden_ir",
+        model_.graph_name + "#" + std::to_string(i) + "|" + op.op_name +
+            "|compile");
+
+    model_.ops.push_back(std::move(desc));
+  }
 }
 
 void EdgeTpuAdapter::BuildModelFromOperators() {

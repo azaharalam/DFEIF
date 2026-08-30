@@ -49,6 +49,7 @@ add_library(dfabit_core
   src/runtime/launch_observer.cc
   src/adapters/gpu_mlir/gpu_mlir_adapter.cc
   src/adapters/edgetpu/edgetpu_adapter.cc
+  src/adapters/edgetpu/edgetpu_flatbuffer.cc
   src/hidden_ir/graph_importer.cc
   src/hidden_ir/sidecar_loader.cc
   src/hidden_ir/partition_tracker.cc

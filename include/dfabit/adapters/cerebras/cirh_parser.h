@@ -19,6 +19,13 @@ namespace dfabit::adapters::cerebras {
 // lineage stated by the compiler, not reconstructed by us.
 struct CirhOp {
   std::string ssa;          // %681
+
+  // SSA names of the values this operator consumes, and the byte size of the
+  // value it produces. Together these give a def-use chain over the graph,
+  // which is what any liveness or reuse analysis needs and what tensor types
+  // alone cannot provide.
+  std::vector<std::string> operand_ssa;
+  double result_bytes = 0.0;
   std::string op_name;      // MatMul
   std::string aten_op;      // aten::mm
   std::string module_path;  // model.vit_model...proj_q_dense_layer

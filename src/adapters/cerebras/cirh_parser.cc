@@ -182,6 +182,29 @@ std::string PhaseOf(
   return "forward";
 }
 
+// Frames belonging to the framework rather than to the model being compiled.
+// An operator's callsite chain runs from the innermost dispatch frame out to
+// the CLI entry point, so neither end names the code a developer wrote: the
+// innermost is PyTorch's function-mode dispatch, shared by nearly every
+// operator, and the outermost is the launcher. The first frame that is not
+// infrastructure is the model source.
+//
+// This list is specific to the Cerebras PyTorch stack.
+const char* const kFrameworkFrames[] = {
+    "torch/",
+    "cerebras/pytorch/",
+    "cerebras/modelzoo/trainer/",
+    "cerebras/modelzoo/cli/",
+    "cszoo",
+};
+
+bool IsFrameworkFrame(const std::string& path) {
+  for (const auto* prefix : kFrameworkFrames) {
+    if (path.find(prefix) != std::string::npos) return true;
+  }
+  return false;
+}
+
 struct LocInfo {
   std::string module_path;
   std::string aten_op;
@@ -217,10 +240,13 @@ std::map<std::string, LocInfo> ParseLocations(const std::string& text) {
       info.module_path = name;
     }
 
-    std::smatch cm;
-    if (std::regex_search(body, cm, callsite)) {
-      info.src_file = cm[2].str();
-      info.src_line = cm[3].str();
+    for (auto it = std::sregex_iterator(body.begin(), body.end(), callsite);
+         it != std::sregex_iterator(); ++it) {
+      const auto path = (*it)[2].str();
+      if (IsFrameworkFrame(path)) continue;
+      info.src_file = path;
+      info.src_line = (*it)[3].str();
+      break;
     }
 
     out[m[1].str()] = std::move(info);
@@ -317,6 +343,22 @@ dfabit::core::Status CirhParser::ParseText(
         }
       }
     }
+    // Operand SSA names come from the value list, which precedes the attribute
+    // dictionary. Attribute values are never SSA references, so scanning the
+    // text before the first "{" is exact.
+    {
+      static const std::regex ssa_re(R"(%[\w#]+)");
+      std::string value_text = lhs;
+      const auto brace = value_text.find('{');
+      if (brace != std::string::npos) value_text = value_text.substr(0, brace);
+      const auto colon = value_text.find(':');
+      if (colon != std::string::npos) value_text = value_text.substr(0, colon);
+      for (auto it = std::sregex_iterator(value_text.begin(), value_text.end(), ssa_re);
+           it != std::sregex_iterator(); ++it) {
+        op.operand_ssa.push_back(it->str());
+      }
+    }
+
     const auto ins = ExtractTensors(operand_text);
     auto outs = ExtractTensors(rhs);
     if (outs.empty()) {
@@ -355,6 +397,11 @@ dfabit::core::Status CirhParser::ParseText(
     for (const auto& t : outs) bytes += Numel(t.dims) * static_cast<double>(DtypeBytes(t.dtype));
     op.total_bytes = bytes;
 
+    if (!outs.empty()) {
+      op.result_bytes =
+          Numel(outs[0].dims) * static_cast<double>(DtypeBytes(outs[0].dtype));
+    }
+
     const auto symbol = (op.module_path.empty() ? std::string("anon") : op.module_path) +
                         "#" + op.ssa.substr(1);
     op.stable_id = assigner.Assign(
@@ -390,6 +437,24 @@ dfabit::metadata::ModelDesc CirhParser::ToModel(
     desc.attributes["phase"] = op.phase;
     desc.attributes["macs"] = std::to_string(static_cast<long long>(op.macs));
     desc.attributes["macs_determined"] = op.macs_determined ? "1" : "0";
+    desc.attributes["ssa"] = op.ssa;
+    desc.attributes["result_bytes"] = std::to_string(
+        static_cast<long long>(op.result_bytes));
+
+    // Operands and result are published as TensorDesc entries keyed by SSA
+    // name. A tool can then reconstruct the def-use chain from OpDesc alone,
+    // without knowing which backend produced it.
+    for (const auto& operand : op.operand_ssa) {
+      dfabit::metadata::TensorDesc t;
+      t.name = operand;
+      desc.inputs.push_back(std::move(t));
+    }
+    {
+      dfabit::metadata::TensorDesc t;
+      t.name = op.ssa;
+      t.dtype = op.dtype;
+      desc.outputs.push_back(std::move(t));
+    }
     if (!op.src_file.empty()) {
       desc.attributes["src"] = op.src_file + ":" + op.src_line;
     }
