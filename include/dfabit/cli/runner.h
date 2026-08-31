@@ -38,6 +38,12 @@ struct CliOptions {
   double sampling_ratio = 1.0;
   std::vector<std::string> include_ops;
 
+  // Tools named on the command line. Empty means run every registered tool,
+  // which keeps a bare invocation useful. A tool is resolved through the
+  // registry by name, so a tool added by a user is selectable the same way as
+  // a built-in one without changing the driver.
+  std::vector<std::string> requested_tools;
+
   bool enable_portability_tool = true;
   bool enable_overhead_profiler_tool = true;
   bool enable_semantic_attribution_tool = true;

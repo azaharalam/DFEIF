@@ -5,6 +5,8 @@
 #include "dfabit/cli/experiment_config.h"
 #include "dfabit/cli/experiment_runner.h"
 #include "dfabit/cli/runner.h"
+#include "dfabit/tools/register_builtin_tools.h"
+#include "dfabit/tools/tool_registry.h"
 
 namespace {
 
@@ -23,6 +25,12 @@ void PrintUsage() {
       << "\n"
       << "  --model-dir <dir>        cerebras: discover cirh.mlir from the compile\n"
       << "  --detail ids|lite|full   instrumentation depth (default full)\n"
+      << "\n"
+      << "tools:\n"
+      << "  --tool <name>            run a named tool; repeatable. Naming none\n"
+      << "                           runs every registered tool.\n"
+      << "  --list-tools             print registered tool names and exit\n"
+      << "  --no-<name>-tool         drop one tool from the default set\n"
       << "\n"
       << "batch run:\n"
       << "  dfabitctl --config <experiment.cfg>\n";
@@ -180,6 +188,18 @@ int main(int argc, char** argv) {
         return 1;
       }
       config_path = argv[++i];
+    } else if (arg == "--tool") {
+      if (i + 1 >= argc) {
+        std::cerr << "--tool requires a tool name\n";
+        return 1;
+      }
+      options.requested_tools.emplace_back(argv[++i]);
+    } else if (arg == "--list-tools") {
+      dfabit::tools::RegisterBuiltinTools();
+      for (const auto& name : dfabit::tools::ToolRegistry::Instance().List()) {
+        std::cout << name << "\n";
+      }
+      return 0;
     } else if (arg == "--no-portability-tool") {
       options.enable_portability_tool = false;
     } else if (arg == "--no-overhead-profiler-tool") {

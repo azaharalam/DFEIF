@@ -31,13 +31,17 @@ metric() { grep -h "^$2," "$1" 2>/dev/null | head -1 | cut -d, -f2; }
 
 MEM_ETPU="$OUT/edgetpu_memory.csv"
 ATT_ETPU="$OUT/edgetpu_attribution.csv"
+PA_ETPU="$OUT/edgetpu_program_analysis.csv"
 MEM_CB="$OUT/cerebras_memory.csv"
 ATT_CB="$OUT/cerebras_attribution.csv"
+PA_CB="$OUT/cerebras_program_analysis.csv"
 
 echo "model,operators,parameter_bytes,peak_activation_bytes,total_footprint_bytes,on_chip_reported,off_chip_reported" > "$MEM_ETPU"
 echo "model,operators,with_module,with_source_site,source_sites,module_only,unattributed" > "$ATT_ETPU"
+echo "model,operators,total_macs,total_bytes,arithmetic_intensity,ridge_point,boundness" > "$PA_ETPU"
 echo "model,graph,operators,total_footprint_bytes,peak_live_bytes,retained_bytes,retained_tensors,mean_reuse_distance,dominant_phase,dominant_module" > "$MEM_CB"
 echo "model,graph,operators,with_module,with_source_site,source_sites,module_only,unattributed" > "$ATT_CB"
+echo "model,graph,operators,total_macs,total_bytes,arithmetic_intensity,ridge_point,boundness" > "$PA_CB"
 
 # ------------------------------------------------------------------ Edge TPU
 echo "=== Edge TPU"
@@ -74,6 +78,12 @@ for compiled in models/*_edgetpu.tflite; do
   mo=$(metric "$A" operators_attributed_by_module_only)
   un=$(metric "$A" operators_unattributed)
   echo "$base,${ops:-},${wm:-0},${ws:-0},${ss:-0},${mo:-0},${un:-0}" >> "$ATT_ETPU"
+
+  P="$d/tools/program_analyzer/program_analysis_summary.csv"
+  pm=$(metric "$P" total_macs); pb=$(metric "$P" total_bytes)
+  pi=$(metric "$P" arithmetic_intensity); pr=$(metric "$P" ridge_point)
+  pn=$(metric "$P" boundness)
+  echo "$base,${ops:-},${pm:-0},${pb:-0},${pi:-0},${pr:-0},${pn:-}" >> "$PA_ETPU"
 
   printf "%-42s %6s %11.2f %10.2f %8s %8s\n" "${base:0:42}" "${ops:-?}" \
     "$(awk -v v="${par:-0}" 'BEGIN{print v/1048576}')" \
@@ -124,6 +134,12 @@ for model_dir in dfit_ship/*/; do
     un=$(metric "$A" operators_unattributed)
     echo "$m,$graph,${ops:-},${wm:-0},${ws:-0},${ss:-0},${mo:-0},${un:-0}" >> "$ATT_CB"
 
+    P="$d/tools/program_analyzer/program_analysis_summary.csv"
+    pm=$(metric "$P" total_macs); pb=$(metric "$P" total_bytes)
+    pi=$(metric "$P" arithmetic_intensity); pr=$(metric "$P" ridge_point)
+    pn=$(metric "$P" boundness)
+    echo "$m,$graph,${ops:-},${pm:-0},${pb:-0},${pi:-0},${pr:-0},${pn:-}" >> "$PA_CB"
+
     printf "%-26s %7s %11.2f %12.2f %7s %8s\n" "${m}/${graph:5:12}" "${ops:-?}" \
       "$(awk -v v="${foot:-0}" 'BEGIN{print v/1073741824}')" \
       "$(awk -v v="${ret:-0}" 'BEGIN{print v/1073741824}')" \
@@ -136,8 +152,10 @@ rm -rf /tmp/toolsweep
 echo
 echo "wrote $MEM_ETPU"
 echo "wrote $ATT_ETPU"
+echo "wrote $PA_ETPU"
 echo "wrote $MEM_CB"
 echo "wrote $ATT_CB"
+echo "wrote $PA_CB"
 echo
 echo "Per-site attribution tables are in each run directory under"
 echo "tools/semantic_attribution/semantic_attribution_summary.csv."

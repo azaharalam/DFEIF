@@ -1,5 +1,6 @@
 #include "dfabit/cli/runner.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -246,57 +247,35 @@ dfabit::core::Status AddBuiltinTools(
     return dfabit::core::Status::Ok();
   }
 
-  if (options.enable_portability_tool) {
-    auto portability_tool =
-        dfabit::tools::ToolRegistry::Instance().Create("portability_report");
-    if (!portability_tool) {
-      return {
-          dfabit::core::StatusCode::kNotFound,
-          "failed to create tool: portability_report"};
-    }
-    auto st = tool_manager->AddTool(std::move(portability_tool));
-    if (!st.ok()) {
-      return st;
-    }
+  // Tools are resolved by name through the registry rather than by a fixed
+  // list here. Naming none runs everything registered; naming some runs only
+  // those. A tool a user registers is therefore selectable with --tool without
+  // any change to the driver, which is the property the framework claims.
+  std::vector<std::string> tool_names = options.requested_tools;
+  if (tool_names.empty()) {
+    tool_names = dfabit::tools::ToolRegistry::Instance().List();
+
+    // The legacy --no-<tool> flags remove a tool from the default set. They
+    // have no effect once --tool has named one explicitly.
+    const auto drop = [&tool_names](bool enabled, const char* name) {
+      if (enabled) return;
+      tool_names.erase(
+          std::remove(tool_names.begin(), tool_names.end(), std::string(name)),
+          tool_names.end());
+    };
+    drop(options.enable_portability_tool, "portability_report");
+    drop(options.enable_overhead_profiler_tool, "overhead_profiler");
+    drop(options.enable_semantic_attribution_tool, "semantic_attribution");
+    drop(options.enable_dataflow_memory_proxy_tool, "dataflow_memory_proxy");
   }
 
-  if (options.enable_overhead_profiler_tool) {
-    auto overhead_tool =
-        dfabit::tools::ToolRegistry::Instance().Create("overhead_profiler");
-    if (!overhead_tool) {
-      return {
-          dfabit::core::StatusCode::kNotFound,
-          "failed to create tool: overhead_profiler"};
+  for (const auto& tool_name : tool_names) {
+    auto tool = dfabit::tools::ToolRegistry::Instance().Create(tool_name);
+    if (!tool) {
+      return {dfabit::core::StatusCode::kNotFound,
+              "failed to create tool: " + tool_name};
     }
-    auto st = tool_manager->AddTool(std::move(overhead_tool));
-    if (!st.ok()) {
-      return st;
-    }
-  }
-
-  if (options.enable_semantic_attribution_tool) {
-    auto semantic_tool =
-        dfabit::tools::ToolRegistry::Instance().Create("semantic_attribution");
-    if (!semantic_tool) {
-      return {
-          dfabit::core::StatusCode::kNotFound,
-          "failed to create tool: semantic_attribution"};
-    }
-    auto st = tool_manager->AddTool(std::move(semantic_tool));
-    if (!st.ok()) {
-      return st;
-    }
-  }
-
-  if (options.enable_dataflow_memory_proxy_tool) {
-    auto proxy_tool =
-        dfabit::tools::ToolRegistry::Instance().Create("dataflow_memory_proxy");
-    if (!proxy_tool) {
-      return {
-          dfabit::core::StatusCode::kNotFound,
-          "failed to create tool: dataflow_memory_proxy"};
-    }
-    auto st = tool_manager->AddTool(std::move(proxy_tool));
+    auto st = tool_manager->AddTool(std::move(tool));
     if (!st.ok()) {
       return st;
     }

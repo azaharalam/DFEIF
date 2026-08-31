@@ -4,6 +4,7 @@
 #include "dfabit/tools/builtin/overhead_profiler_tool.h"
 #include "dfabit/tools/builtin/portability_report_tool.h"
 #include "dfabit/tools/builtin/semantic_attribution_tool.h"
+#include "dfabit/tools/builtin/program_analyzer_tool.h"
 #include "dfabit/tools/tool_registry.h"
 
 namespace dfabit::tools {
@@ -45,6 +46,14 @@ dfabit::core::Status RegisterBuiltinTools() {
     }
   }
 
+  if (!ToolRegistry::Instance().HasTool("program_analyzer")) {
+    const auto st = ToolRegistry::Instance().Register(
+        "program_analyzer",
+        &dfabit::tools::builtin::CreateProgramAnalyzerTool);
+    if (!st.ok()) {
+      return st;
+    }
+  }
   return dfabit::core::Status::Ok();
 }
 

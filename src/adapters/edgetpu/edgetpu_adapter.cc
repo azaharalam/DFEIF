@@ -851,6 +851,12 @@ dfabit::core::Status EdgeTpuAdapter::CompileEnd(
     BuildModelFromOperators();
   }
 
+  // Peak compute and bandwidth for the device this adapter targets. These are
+  // the only backend-specific numbers an analysis needs: a tool reads them
+  // through the context and stays otherwise identical across backends.
+  ctx->SetProperty("peak_macs_per_s", "2e12");     // 4 TOPS int8, 2 ops per MAC
+  ctx->SetProperty("peak_bw_bytes_per_s", "8e9");  // 8 GB/s over USB 3.0
+
   ctx->SetMetadataOps(model_.ops);
   ctx->mutable_run_context().SetAttribute("graph_name", model_.graph_name);
 
@@ -936,6 +942,10 @@ void EdgeTpuAdapter::BuildModelFromGraph(
     }
 
     desc.estimated_bytes = static_cast<std::int64_t>(footprint);
+    // Two operations per multiply-accumulate, matching the convention the
+    // Cerebras adapter uses so a tool sees one unit across backends.
+    desc.estimated_flops = static_cast<std::int64_t>(op.macs * 2.0);
+    desc.attributes["macs_determined"] = op.macs_determined ? "1" : "0";
     desc.attributes["result_bytes"] =
         std::to_string(static_cast<long long>(result_bytes));
 

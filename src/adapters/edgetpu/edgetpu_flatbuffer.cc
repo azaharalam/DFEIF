@@ -138,6 +138,98 @@ const char* const kBuiltinOperators[] = {
 constexpr std::size_t kBuiltinCount =
     sizeof(kBuiltinOperators) / sizeof(kBuiltinOperators[0]);
 
+
+double Numel(const std::vector<std::int64_t>& shape) {
+  double n = 1.0;
+  for (const auto d : shape) {
+    if (d <= 0) return 0.0;
+    n *= static_cast<double>(d);
+  }
+  return n;
+}
+
+// MACs for one operator from its tensor shapes. Operators that move or reshape
+// data do no arithmetic and report zero as a determined result. Operators whose
+// cost depends on values rather than shapes, and the fused Edge TPU subgraph
+// operator, report zero undetermined.
+double ComputeMacs(const std::string& op_name,
+                   const std::vector<TfLiteTensorInfo>& tensors,
+                   const std::vector<int>& inputs,
+                   const std::vector<int>& outputs,
+                   bool* determined) {
+  *determined = false;
+
+  const auto shape_of = [&](std::size_t which,
+                            const std::vector<int>& idx) -> std::vector<std::int64_t> {
+    if (which >= idx.size()) return {};
+    const int t = idx[which];
+    if (t < 0 || static_cast<std::size_t>(t) >= tensors.size()) return {};
+    return tensors[t].shape;
+  };
+
+  static const char* kZeroMac[] = {
+      "RESHAPE", "TRANSPOSE", "PAD", "PADV2", "CONCATENATION", "SPLIT",
+      "SPLIT_V", "SLICE", "STRIDED_SLICE", "SQUEEZE", "EXPAND_DIMS", "PACK",
+      "UNPACK", "GATHER", "CAST", "QUANTIZE", "DEQUANTIZE", "SHAPE",
+      "RESIZE_BILINEAR", "RESIZE_NEAREST_NEIGHBOR", "MAX_POOL_2D",
+      "AVERAGE_POOL_2D", "RELU", "RELU6", "LOGISTIC", "TANH", "SOFTMAX",
+      "ADD", "SUB", "MUL", "DIV", "MAXIMUM", "MINIMUM", "MEAN", "SUM",
+      "HARD_SWISH", "L2_NORMALIZATION"};
+  for (const auto* z : kZeroMac) {
+    if (op_name == z) {
+      *determined = true;
+      return 0.0;
+    }
+  }
+
+  const auto out = shape_of(0, outputs);
+  if (out.empty()) return 0.0;
+
+  if (op_name == "FULLY_CONNECTED") {
+    const auto w = shape_of(1, inputs);
+    if (w.size() >= 2 && w[0] > 0) {
+      const double units = static_cast<double>(w[0]);
+      const double in_features = static_cast<double>(w[1]);
+      const double batch = Numel(out) / units;
+      *determined = true;
+      return batch * units * in_features;
+    }
+    return 0.0;
+  }
+
+  if (op_name == "BATCH_MATMUL") {
+    const auto a = shape_of(0, inputs);
+    if (a.size() >= 2) {
+      *determined = true;
+      return Numel(out) * static_cast<double>(a.back());
+    }
+    return 0.0;
+  }
+
+  if (op_name == "CONV_2D" || op_name == "TRANSPOSE_CONV") {
+    // weights [out_ch, kh, kw, in_ch]; one MAC per output element per tap.
+    const auto w = shape_of(1, inputs);
+    if (w.size() == 4) {
+      *determined = true;
+      return Numel(out) * static_cast<double>(w[1]) *
+             static_cast<double>(w[2]) * static_cast<double>(w[3]);
+    }
+    return 0.0;
+  }
+
+  if (op_name == "DEPTHWISE_CONV_2D") {
+    // weights [1, kh, kw, channels]; each output element sees kh*kw taps.
+    const auto w = shape_of(1, inputs);
+    if (w.size() == 4) {
+      *determined = true;
+      return Numel(out) * static_cast<double>(w[1]) *
+             static_cast<double>(w[2]);
+    }
+    return 0.0;
+  }
+
+  return 0.0;
+}
 }  // namespace
 
 dfabit::core::Status TfLiteFlatBufferReader::Read(
@@ -282,6 +374,11 @@ dfabit::core::Status TfLiteFlatBufferReader::Read(
         op.outputs.push_back(buf.I32(VectorElement(v, k, 4)));
       }
     }
+    bool determined = false;
+    op.macs = ComputeMacs(op.op_name, graph->tensors, op.inputs, op.outputs,
+                          &determined);
+    op.macs_determined = determined;
+
     graph->ops.push_back(std::move(op));
   }
 

@@ -281,6 +281,10 @@ dfabit::core::Status CerebrasAdapter::CompileEnd(
           std::make_move_iterator(metrics.end()));
     }
   }
+  // Peak compute and bandwidth for the device this adapter targets.
+  ctx->SetProperty("peak_macs_per_s", "6.25e16");   // 125 PFLOP/s, 2 ops per MAC
+  ctx->SetProperty("peak_bw_bytes_per_s", "2e16");  // 20 PB/s on-wafer
+
 
   ctx->SetMetadataOps(model_.ops);
   ctx->mutable_run_context().SetAttribute("graph_name", model_.graph_name);

@@ -41,6 +41,14 @@ struct TfLiteOpInfo {
   std::string op_name;
   std::vector<int> inputs;
   std::vector<int> outputs;
+
+  // Multiply-accumulate count derived from tensor shapes. An operator whose
+  // arithmetic cannot be inferred from shapes alone reports zero with
+  // macs_determined false, rather than a guess: the Edge TPU's fused subgraph
+  // operator is the main such case, and counting it as zero work would be as
+  // wrong as inventing a figure for it.
+  double macs = 0.0;
+  bool macs_determined = false;
 };
 
 struct TfLiteGraph {

@@ -62,6 +62,7 @@ add_library(dfabit_core
   src/tools/builtin/portability_report_tool.cc
   src/tools/builtin/overhead_profiler_tool.cc
   src/tools/builtin/semantic_attribution_tool.cc
+  src/tools/builtin/program_analyzer_tool.cc
   src/tools/builtin/dataflow_memory_proxy_tool.cc
   src/cli/runner.cc
   src/cli/experiment_config.cc

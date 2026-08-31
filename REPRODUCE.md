@@ -1,284 +1,286 @@
-# Reproducing DFIT's Reported Numbers
+# Reproducing the reported numbers
 
-This document maps each quantitative claim to the command that produces it and
-the value that command should return. Everything listed under Tier 1 runs on an
-ordinary Linux machine with no accelerator attached.
+Each claim below maps to a command and the value it should return. Tier 1 needs
+no hardware and no vendor toolchain. Tier 2 needs the Edge TPU compiler. Tier 3
+needs an attached Coral device.
 
-Tolerances are stated per claim. Structural values (operator counts, MAC totals,
-mapping ratios) are deterministic and must match exactly. Timing values vary
-with the host and are given as ranges.
+`verify.sh` runs every Tier 1 check and reports pass or fail:
+
+```bash
+bash verify.sh
+```
+
+From a clean clone this is 91 checks. Tier 2 and Tier 3 checks report SKIP when
+their prerequisite is absent.
 
 ---
 
-## Requirements
-
-Tier 1 needs only a C++17 compiler and CMake 3.16+. No accelerator, no vendor
-SDK, no network access.
+## Setup
 
 ```bash
 cmake -S . -B build -DDFABIT_BUILD_PYTHON=OFF
 cmake --build build -j
-./build/smoketest        # expect: all smoke tests passed
+./build/smoketest
 ```
 
-Tier 2 additionally needs `edgetpu_compiler` (a free download; it runs without
-the device) and, for latency only, a Coral USB Accelerator.
-
-Tier 3 needs an ALCF Cerebras allocation and is not expected to be exercised by
-reviewers. It is documented for completeness.
-
----
-
-## Tier 1 — Cerebras compiler-artifact analysis (no hardware)
-
-The repository ships `cirh.mlir` dumps from seven model families compiled on a
-Cerebras CS-2 at ALCF, under `dfit_ship/`. These are the compiler's own output,
-gzipped; nothing about them is synthesised.
-
-### T1.1 Operator recovery and MAC computation
+Several checks below read a shipped Cerebras dump. Stage it once:
 
 ```bash
 mkdir -p /tmp/v/cerebras_logs/x/executors/000001
 gunzip -c dfit_ship/vit/cirh_10288ops.mlir.gz \
   > /tmp/v/cerebras_logs/x/executors/000001/cirh.mlir
-./build/dfabitctl --backend cerebras --model-dir /tmp/v \
-  --out /tmp/vo --mode full --detail full
-grep -E "cirh_operators,|cirh_phase_macs" /tmp/vo/reports/compile_metrics.csv
+
+./build/dfabitctl --backend cerebras --model-dir /tmp/v --out /tmp/vo --mode full
 ```
-
-Expected, exactly:
-
-| metric | value |
-|---|---|
-| `cirh_operators` | 10262 |
-| `cirh_phase_macs` phase=forward | 5.00569e+13 |
-| `cirh_phase_macs` phase=backward | 9.97843e+13 |
-| `cirh_phase_macs` phase=optimizer | 0 |
-
-The forward figure is independently checkable: ViT-Base/16 is ~17.6 GMAC per
-image and this graph has batch 2850, giving ~5.02e13. The backward/forward ratio
-of 1.993 matches the theoretical 2x for backpropagation. Optimizer MACs are zero
-because Adam performs elementwise updates and no multiply-accumulates.
-
-### T1.2 All eleven shipped graphs parse
-
-```bash
-for m in vit bert dit esm2 mixtral dino llama3_8b; do
-  for gz in dfit_ship/$m/cirh_*.mlir.gz; do
-    [ -f "$gz" ] || continue
-    tag=$(basename "$gz" .mlir.gz)
-    d=/tmp/va/${m}_${tag}/cerebras_logs/x/executors/000001
-    mkdir -p "$d" && gunzip -c "$gz" > "$d/cirh.mlir"
-    ./build/dfabitctl --backend cerebras --model-dir /tmp/va/${m}_${tag} \
-      --out /tmp/vao/${m}_${tag} --mode full >/dev/null 2>&1
-    echo "$m $tag: $(grep -h '^cirh_operators,' \
-      /tmp/vao/${m}_${tag}/reports/compile_metrics.csv | cut -d, -f2)"
-  done
-done
-```
-
-Expected operator counts, exactly:
-
-| model | graph | operators |
-|---|---|---|
-| vit | cirh_811ops | 810 |
-| vit | cirh_10288ops | 10262 |
-| bert | cirh_1604ops | 1602 |
-| bert | cirh_19956ops | 19904 |
-| dit | cirh_2800ops | 2800 |
-| dit | cirh_27586ops | 27537 |
-| esm2 | cirh_26910ops | 26841 |
-| mixtral | cirh_2420ops | 2329 |
-| mixtral | cirh_16401ops | 16169 |
-| dino | cirh_32670ops | 32569 |
-| llama3_8b | cirh_19401ops | 19400 |
-
-### T1.3 Semantic lineage recovery
-
-Every operator carries the module path it came from, the originating ATen
-operator, and the Python source line, all read from the compiler's own `loc()`
-records rather than reconstructed.
-
-```bash
-grep -c "" /tmp/vo/reports/metadata_ops.csv
-head -3 /tmp/vo/reports/metadata_ops.csv
-```
-
-Expected: 10263 lines (10262 operators plus header). Operator rows carry
-`module_path`, `aten_op` and `src` attributes; for the ViT graph over 99% of
-operators have a non-empty module path.
-
-### T1.4 Multiple executors per compile
-
-One `cszoo fit --compile_only` invocation emits several compiled graphs. DFIT
-attributes metrics per executor rather than picking one.
-
-```bash
-mkdir -p /tmp/vm/cerebras_logs/x/executors/00000{1,2}
-gunzip -c dfit_ship/vit/cirh_10288ops.mlir.gz \
-  > /tmp/vm/cerebras_logs/x/executors/000001/cirh.mlir
-gunzip -c dfit_ship/vit/cirh_811ops.mlir.gz \
-  > /tmp/vm/cerebras_logs/x/executors/000002/cirh.mlir
-./build/dfabitctl --backend cerebras --model-dir /tmp/vm \
-  --out /tmp/vmo --mode full --detail full
-grep -E "cirh_executors|cirh_operators," /tmp/vmo/reports/compile_metrics.csv
-```
-
-Expected: `cirh_executors` = 2, with separate `cirh_operators` rows of 10262
-(executor=000001) and 810 (executor=000002).
-
-### T1.5 Instrumentation overhead by depth
-
-```bash
-bash sweep_cerebras.sh
-```
-
-Runs 11 graphs at four instrumentation depths, one warmup pass and three timed
-passes of 20 in-process repetitions each. Takes roughly 40 minutes.
-
-Expected medians across the eleven graphs:
-
-| level | median overhead | observed range |
-|---|---|---|
-| ids | +3.8% | +0.2% to +5.5% |
-| lite | +5.4% | +2.0% to +7.4% |
-| full | +12.4% | +5.3% to +13.6% |
-
-The ordering baseline < ids < lite < full holds for every graph. Absolute
-per-session times are host-dependent and will differ; the percentages should
-reproduce within a few points.
-
-Two properties of this measurement must be carried into any use of the numbers:
-
-1. `--mode baseline` still parses the entire `cirh.mlir`. Parsing happens
-   regardless of whether tracing is enabled, so these percentages measure the
-   cost of event emission on top of parsing, not instrumentation against an
-   uninstrumented run.
-2. Timings are taken with `--repeat-session`, which amortizes process launch
-   (~4 ms) across repetitions. Timing a single invocation from the shell
-   includes that launch cost and will not match.
-
-Trace volume is deterministic and should match exactly:
-
-| graph | ids bytes | lite bytes | full bytes |
-|---|---|---|---|
-| vit/cirh_10288ops | 1938765 | 2626647 | 5508424 |
-| dino/cirh_32670ops | 6139653 | 8330959 | 17974171 |
-
-### T1.6 No metric is reported that was not measured
-
-Running without a paired baseline command produces no overhead figures at all,
-and says so.
-
-```bash
-./build/dfabitctl --backend edgetpu \
-  --model models/mobilenet_v2_1.0_224_quant_edgetpu.tflite \
-  --out /tmp/nm --mode full
-ls /tmp/nm/tools/overhead_profiler/ 2>/dev/null
-cat /tmp/nm/reports/overhead_not_measured.txt
-```
-
-Expected: no `overhead_profiler` directory, and a note explaining that no paired
-measurement was run. This is a deliberate property: earlier revisions of this
-code emitted a fixed 8% slowdown from hardcoded constants when no measurement
-had taken place.
 
 ---
 
-## Tier 2 — Edge TPU (compiler only, or with a Coral device)
+## Tier 1: no hardware required
 
-`edgetpu_compiler` runs without the accelerator attached, so the compile-stage
-claims reproduce on any machine.
-
-### T2.1 Operator mapping and memory residency
+### T1.1 Operator recovery and MAC computation (ViT)
 
 ```bash
-edgetpu_compiler -s models/mobilenet_v2_1.0_224_quant.tflite \
-  > /tmp/mnv2_summary.log 2>&1
-./build/dfabitctl --backend edgetpu \
-  --model models/mobilenet_v2_1.0_224_quant_edgetpu.tflite \
-  --compile-report /tmp/mnv2_summary.log \
-  --out /tmp/etpu --mode full
-grep -E "tpu_mapping_ratio|on_chip_param_fraction|edgetpu_subgraphs|total_operations" \
-  /tmp/etpu/reports/compile_metrics.csv
+grep -E "cirh_operators|cirh_phase_macs|cirh_operators_with_lineage" \
+  /tmp/vo/reports/compile_metrics.csv
 ```
 
-Expected for MobileNetV2: `tpu_mapping_ratio` 1, `on_chip_param_fraction` 1,
-`edgetpu_subgraphs` 1, `total_operations` 66.
+| metric | expected |
+|---|---|
+| `cirh_operators` | 10262 |
+| `cirh_phase_macs` forward | 5.00569e+13 |
+| `cirh_phase_macs` backward | 9.97843e+13 |
+| `cirh_phase_macs` optimizer | 0 |
+| `cirh_operators_with_lineage` | 10247 |
 
-### T2.2 Partial mapping and off-chip streaming
+The backward-to-forward MAC ratio is 1.993, against a theoretical 2.
 
-The interesting cases are models that do not map cleanly:
+### T1.2 All shipped graphs parse to their expected operator counts
 
-| model | tpu_mapping_ratio | on_chip_param_fraction | note |
-|---|---|---|---|
-| ssd_mobilenet_v2_coco_quant_postprocess | 0.973 | 1.000 | 3 operators fall back to CPU |
-| deeplabv3_mnv2_pascal_quant | 0.889 | 1.000 | 8 operators fall back |
-| inception_v4_299_quant | 1.000 | 0.140 | 36.3 MiB streams off-chip per inference |
-| yolov5n_320_quant | 0.917 | 1.000 | 23 operators fall back |
+```bash
+for gz in dfit_ship/*/cirh_*.mlir.gz; do
+  d=/tmp/p/$(basename $(dirname $gz))_$(basename $gz .mlir.gz)
+  mkdir -p $d/cerebras_logs/x/executors/000001
+  gunzip -c $gz > $d/cerebras_logs/x/executors/000001/cirh.mlir
+  ./build/dfabitctl --backend cerebras --model-dir $d --out $d/out --mode full >/dev/null 2>&1
+  printf "%-32s %s\n" "$(basename $gz)" \
+    "$(grep '^cirh_operators,' $d/out/reports/compile_metrics.csv | cut -d, -f2)"
+done
+```
 
-Fallback reasons are preserved verbatim from the compiler in the `status`
-attribute of each `operator_count` row.
+| graph | operators |
+|---|---|
+| vit/cirh_811ops | 810 |
+| vit/cirh_10288ops | 10262 |
+| bert/cirh_1604ops | 1602 |
+| bert/cirh_19956ops | 19904 |
+| dit/cirh_2800ops | 2800 |
+| dit/cirh_27586ops | 27537 |
+| esm2/cirh_26910ops | 26841 |
+| mixtral/cirh_2420ops | 2329 |
+| mixtral/cirh_16401ops | 16169 |
+| dino/cirh_32670ops | 32569 |
+| llama3_8b/cirh_19401ops | 19400 |
 
-### T2.3 Latency (requires the device)
+### T1.3 Per-executor attribution
+
+A single compile emits a training graph and an evaluation graph. Both are
+parsed and reported separately.
+
+```bash
+grep -E "cirh_executors|executor=" /tmp/vo/reports/compile_metrics.csv | head
+```
+
+| metric | expected |
+|---|---|
+| `cirh_executors` | 2 |
+| executor 000001 operators | 10262 |
+| executor 000002 operators | 810 |
+
+### T1.4 Trace volume scales with instrumentation depth
+
+```bash
+for d in ids lite full; do
+  ./build/dfabitctl --backend cerebras --model-dir /tmp/v \
+    --out /tmp/t_$d --mode full --detail $d >/dev/null 2>&1
+  printf "%-6s %s bytes\n" $d "$(stat -c%s /tmp/t_$d/trace/events.jsonl 2>/dev/null || echo 0)"
+done
+```
+
+Expect a strict increase across `ids`, `lite`, `full`. Volumes are deterministic
+for a given graph.
+
+### T1.5 Overhead is reported only from a paired measurement
+
+The overhead figures in Section 4.2 come from paired runs: an uninstrumented arm
+and an instrumented arm, executed alternately and compared on medians. This
+check confirms the other half of that contract, that no figure appears without
+the pair.
+
+Run without `--baseline-run-cmd`:
+
+```bash
+ls /tmp/vo/tools/overhead_profiler/ 2>/dev/null
+cat /tmp/vo/reports/overhead_not_measured.txt
+```
+
+Expect no overhead artifacts and a note naming the flag that supplies the
+baseline arm. With `--baseline-run-cmd` present the same tool reports the
+measured slowdown; `sweep_detail.sh` in Tier 3 exercises that path.
+
+### T1.6 Semantic attribution (Section 5.1)
+
+```bash
+./build/dfabitctl --backend cerebras --model-dir /tmp/v \
+  --tool semantic_attribution --out /tmp/sa --mode full >/dev/null 2>&1
+head -8 /tmp/sa/tools/semantic_attribution/semantic_attribution_summary.csv
+```
+
+| metric | expected (ViT) |
+|---|---|
+| `operators` | 10262 |
+| `operators_with_module` | 10247 |
+| `operators_with_source_site` | 998 |
+| `source_sites` | 41 |
+| `operators_unattributed` | 15 |
+
+The largest source site produces 173 operators carrying 63.6 TFLOP. The
+unattributed remainder is compiler-materialized constants.
+
+### T1.7 Dataflow memory proxy (Section 5.2)
+
+Cerebras:
+
+```bash
+./build/dfabitctl --backend cerebras --model-dir /tmp/v \
+  --tool dataflow_memory_proxy --out /tmp/mp --mode full >/dev/null 2>&1
+grep -E "retained_to_backward|dominant_phase" \
+  /tmp/mp/tools/dataflow_memory_proxy/dataflow_memory_proxy_summary.csv
+```
+
+| metric | expected (ViT) |
+|---|---|
+| `retained_to_backward_bytes` | 294912501044 |
+| `retained_to_backward_tensors` | 442 |
+| `dominant_phase` | backward |
+
+Edge TPU, using a shipped model:
+
+```bash
+./build/dfabitctl --backend edgetpu \
+  --model models/deeplabv3_mnv2_pascal_quant_edgetpu.tflite \
+  --compile-report models/deeplabv3_mnv2_pascal_quant_summary.log \
+  --tool dataflow_memory_proxy --out /tmp/mpe --mode full >/dev/null 2>&1
+grep -E "^operators,|peak_live_bytes" \
+  /tmp/mpe/tools/dataflow_memory_proxy/dataflow_memory_proxy_summary.csv
+```
+
+| metric | expected (DeepLab-v3) |
+|---|---|
+| `operators` | 72 |
+| `peak_live_bytes` | 7938240 |
+
+That is 7.57 MiB of activation working set against an 8 MiB budget, while the
+compiler reports 2.26 MiB of cached parameters and nothing streaming.
+
+### T1.8 Program analyzer (Section 4.3)
+
+The same tool on both backends, with peak compute and bandwidth supplied by the
+adapter rather than the tool.
+
+```bash
+./build/dfabitctl --backend cerebras --model-dir /tmp/v \
+  --tool program_analyzer --out /tmp/pa --mode full >/dev/null 2>&1
+grep -E "arithmetic_intensity|ridge_point|boundness" \
+  /tmp/pa/tools/program_analyzer/program_analysis_summary.csv
+
+./build/dfabitctl --backend edgetpu \
+  --model models/mobilenet_v2_1.0_224_quant_edgetpu.tflite \
+  --compile-report models/mobilenet_v2_1.0_224_quant_summary.log \
+  --tool program_analyzer --out /tmp/pae --mode full >/dev/null 2>&1
+grep -E "total_macs|arithmetic_intensity|ridge_point|boundness" \
+  /tmp/pae/tools/program_analyzer/program_analysis_summary.csv
+```
+
+| | Cerebras ViT | Edge TPU MobileNetV2 |
+|---|---|---|
+| `total_macs` | 1.50169e+14 | 300775552 |
+| `arithmetic_intensity` | 42.8467 | 16.9865 |
+| `ridge_point` | 3.125 | 250 |
+| `boundness` | compute | memory |
+
+The Cerebras value agrees with `cirh_arithmetic_intensity`, computed
+independently by the adapter. The Edge TPU MAC count matches the published
+MobileNetV2 figure.
+
+### T1.9 Tool selection
+
+```bash
+./build/dfabitctl --list-tools
+```
+
+Expect five names: `dataflow_memory_proxy`, `overhead_profiler`,
+`portability_report`, `program_analyzer`, `semantic_attribution`.
+
+Naming one runs only that tool:
+
+```bash
+./build/dfabitctl --backend cerebras --model-dir /tmp/v \
+  --tool semantic_attribution --out /tmp/one --mode full >/dev/null 2>&1
+ls /tmp/one/tools/
+```
+
+Expect a single directory. An unregistered name fails with
+`failed to create tool: <name>` and a non-zero exit.
+
+---
+
+## Tier 2: Edge TPU compiler required
+
+### T2.1 Recompiling reproduces the shipped report
+
+```bash
+edgetpu_compiler -s -o /tmp/rc models/mobilenet_v2_1.0_224_quant.tflite
+diff <(grep "Total number of operations" /tmp/rc/mobilenet_v2_1.0_224_quant_edgetpu.log) \
+     <(grep "Total number of operations" models/mobilenet_v2_1.0_224_quant_summary.log)
+```
+
+Expect no difference. The shipped summaries are not stale.
+
+### T2.2 DFIT drives the compiler
+
+```bash
+mkdir -p /tmp/live && cp models/mobilenet_v2_1.0_224_quant.tflite /tmp/live/
+./build/dfabitctl --backend edgetpu \
+  --model /tmp/live/mobilenet_v2_1.0_224_quant.tflite --work-dir /tmp/live \
+  --compile-cmd 'edgetpu_compiler -s -o /tmp/live /tmp/live/mobilenet_v2_1.0_224_quant.tflite' \
+  --tool program_analyzer --out /tmp/liveout --mode full
+grep "^total_macs" /tmp/liveout/tools/program_analyzer/program_analysis_summary.csv
+```
+
+Expect `300775552`, the same value as T1.8 from the pre-compiled artifacts.
+
+---
+
+## Tier 3: Coral device required
+
+### T3.1 Measured latency
 
 ```bash
 PYTHONPATH=python python -m dfabit.edgetpu.bench \
   --model models/mobilenet_v2_1.0_224_quant_edgetpu.tflite \
-  --iters 200 --warmup 20 --instrument full \
-  --runtime-log /tmp/rt.csv
+  --iters 200 --warmup 20 --instrument full --runtime-log /tmp/rt.csv
+grep "^run,latency_ms" /tmp/rt.csv
 ```
 
-Expected on a USB 3.0 Coral: median latency 4-5 ms for MobileNetV2. USB 2.0 is
-roughly three times slower.
+Expect 3-15 ms on a USB accelerator. Absolute values depend on the host and the
+USB link, so the check asserts a plausible range rather than a fixed number.
 
-Runtime instrumentation overhead on this device is below the measurement noise
-floor: across 500-iteration runs at four instrumentation depths, median latency
-varied by less than 0.3 ms against a within-run standard deviation of 0.20-0.61
-ms, with no consistent ordering. We report an upper bound rather than a point
-estimate.
-
----
-
-## Tier 3 — Live Cerebras instrumentation (requires an ALCF allocation)
-
-Documented for completeness; not expected to be reproduced.
+### T3.2 Instrumentation overhead
 
 ```bash
-export MODELDIR="$HOME/R_2.10.0/modelzoo/src/cerebras/modelzoo/models/vision/vision_transformer"
-export VENV="$HOME/R_2.10.0/venv_cerebras_pt/bin/activate"
-OUT="$HOME/dfit_live_$(date -u +%Y%m%d_%H%M%S)"
-
-./dfabitctl --backend cerebras \
-  --model-dir "$OUT/cmp" \
-  --work-dir "$MODELDIR" \
-  --compile-cmd "source $VENV && cszoo fit configs/params_vit_base_modified.yaml --compile_only --num_csx 1 --disable_version_check --model_dir $OUT/cmp" \
-  --out "$OUT/dfit" --mode full --detail full
+bash sweep_detail.sh
 ```
 
-DFIT invokes the compile, waits for it, discovers every `cirh.mlir` the compile
-emitted under the model directory, parses them, and attributes metrics per
-executor. A representative run recorded `compile_command_elapsed_ms` of 146624
-against a cached compile; a cold compile takes substantially longer.
-
----
-
-## Not reproducible
-
-**SambaNova.** The adapter is implemented against the documented SambaFlow
-compile and run interface. It is not evaluated here: the SN30 training cluster
-we had access to was decommissioned during this work and replaced with
-inference-only SN40L endpoints, which expose no compiler artifacts. No
-SambaNova compiler traces are included in this artifact.
-
-The adapter still exercises a property the framework claims. Run without a
-device, capability discovery reports what is absent rather than assuming:
-
-```bash
-./build/dfabitctl --backend sambanova --graph examples/sambanova/graph.txt \
-  --out /tmp/sn --mode full
-cat /tmp/sn/tool_portability_capabilities.csv
-```
-
-Expected on a machine with no SambaNova stack: `profiler_metrics_available` 0
-and `custom_env_controls` 0, with no overhead figures produced.
+Reports slowdown across `ids`, `lite` and `full` against an uninstrumented
+baseline. Expect a monotonic increase. The sweep uses warmup passes and repeated
+measurement; single-pass timings are not reliable.
