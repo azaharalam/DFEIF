@@ -10,8 +10,6 @@ needs an attached Coral device.
 bash verify.sh
 ```
 
-From a clean clone this is 91 checks. Tier 2 and Tier 3 checks report SKIP when
-their prerequisite is absent.
 
 ---
 
@@ -83,18 +81,27 @@ done
 
 ### T1.3 Per-executor attribution
 
-A single compile emits a training graph and an evaluation graph. Both are
-parsed and reported separately.
+A single compile emits a training graph and an evaluation graph, and both are
+parsed and reported separately. Stage the two shipped ViT graphs the way a
+compile writes them:
 
 ```bash
-grep -E "cirh_executors|executor=" /tmp/vo/reports/compile_metrics.csv | head
+mkdir -p /tmp/vx/cerebras_logs/x/executors/000001 \
+         /tmp/vx/cerebras_logs/x/executors/000002
+gunzip -c dfit_ship/vit/cirh_10288ops.mlir.gz \
+  > /tmp/vx/cerebras_logs/x/executors/000001/cirh.mlir
+gunzip -c dfit_ship/vit/cirh_811ops.mlir.gz \
+  > /tmp/vx/cerebras_logs/x/executors/000002/cirh.mlir
+
+./build/dfabitctl --backend cerebras --model-dir /tmp/vx --out /tmp/vxo --mode full
+grep -E "^cirh_executors|^cirh_operators," /tmp/vxo/reports/compile_metrics.csv
 ```
 
 | metric | expected |
 |---|---|
 | `cirh_executors` | 2 |
-| executor 000001 operators | 10262 |
-| executor 000002 operators | 810 |
+| `cirh_operators` executor=000001 | 10262 |
+| `cirh_operators` executor=000002 | 810 |
 
 ### T1.4 Trace volume scales with instrumentation depth
 
@@ -102,12 +109,17 @@ grep -E "cirh_executors|executor=" /tmp/vo/reports/compile_metrics.csv | head
 for d in ids lite full; do
   ./build/dfabitctl --backend cerebras --model-dir /tmp/v \
     --out /tmp/t_$d --mode full --detail $d >/dev/null 2>&1
-  printf "%-6s %s bytes\n" $d "$(stat -c%s /tmp/t_$d/trace/events.jsonl 2>/dev/null || echo 0)"
+  printf "%-6s %s bytes\n" $d "$(stat -c%s /tmp/t_$d/trace.jsonl 2>/dev/null || echo 0)"
 done
 ```
 
-Expect a strict increase across `ids`, `lite`, `full`. Volumes are deterministic
-for a given graph.
+| detail | trace bytes |
+|---|---|
+| `ids` | 1928494 |
+| `lite` | 2616297 |
+| `full` | 5478337 |
+
+Volumes are deterministic for a given graph, so these are exact.
 
 ### T1.5 Overhead is reported only from a paired measurement
 
@@ -203,7 +215,7 @@ grep -E "total_macs|arithmetic_intensity|ridge_point|boundness" \
 
 | | Cerebras ViT | Edge TPU MobileNetV2 |
 |---|---|---|
-| `total_macs` | 1.50169e+14 | 300775552 |
+| `total_macs` | 149841255628800 | 300775552 |
 | `arithmetic_intensity` | 42.8467 | 16.9865 |
 | `ridge_point` | 3.125 | 250 |
 | `boundness` | compute | memory |
