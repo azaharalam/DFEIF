@@ -15,7 +15,8 @@ tables for analysis.
 
 ## 1. Install
 
-C++17 and CMake 3.16+. No other dependencies.
+C++17 and CMake 3.16+. No other dependencies. On a fresh Ubuntu host,
+`sudo apt install build-essential cmake git` provides everything needed.
 
 ```bash
 cmake -S . -B build -DDFABIT_BUILD_PYTHON=OFF
@@ -275,7 +276,7 @@ newer. No accelerator is needed for the checks in Section 3.
 |---|---|---|
 | `cmake --build` | 2-4 min | 200 MB |
 | `./build/smoketest` | under 5 s | negligible |
-| `bash verify.sh` | 1-2 min | 500 MB under `/tmp` |
+| `bash verify.sh` | under 2 min | 500 MB under `/tmp` |
 | `bash sweep_tools.sh` | 5-8 min | 1.5 GB under `results/` |
 
 A full clone is about 2.5 GB, most of it the shipped compiler artifacts.
