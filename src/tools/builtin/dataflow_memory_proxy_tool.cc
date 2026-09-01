@@ -216,6 +216,16 @@ dfabit::core::Status DataflowMemoryProxyTool::WritePerOpTable(
   ofs << "stable_id,op_name,dialect,phase,module,operands,result_bytes,"
          "footprint_bytes,live_bytes_after,reuse_distance,retained_to_backward\n";
 
+  // Values are filed under the operator index where their last use occurs, so
+  // retiring them costs only what actually died rather than a scan of every
+  // tensor tracked so far.
+  std::vector<std::vector<const TensorRef*>> dying_at(ops.size() + 1);
+  for (const auto& kv : refs) {
+    if (!kv.second.has_def) continue;
+    const auto slot = std::min(kv.second.last_use, ops.size());
+    dying_at[slot].push_back(&kv.second);
+  }
+
   std::unordered_map<std::string, bool> live;
   double live_bytes = 0.0;
 
@@ -256,16 +266,8 @@ dfabit::core::Status DataflowMemoryProxyTool::WritePerOpTable(
         << reuse << ","
         << (retained ? 1 : 0) << "\n";
 
-    for (const auto& name : {op.outputs.empty() ? std::string() : op.outputs.front().name}) {
-      (void)name;
-    }
-    // Retire values whose last use is this operator.
-    for (auto& kv : refs) {
-      if (!kv.second.has_def || !live[kv.first]) continue;
-      if (kv.second.last_use <= i) {
-        live[kv.first] = false;
-        live_bytes -= kv.second.bytes;
-      }
+    for (const auto* dead : dying_at[i]) {
+      live_bytes -= dead->bytes;
     }
   }
 
@@ -298,6 +300,13 @@ dfabit::core::Status DataflowMemoryProxyTool::WriteSummary(
     }
   }
 
+  std::vector<std::vector<const TensorRef*>> dying_at(ops.size() + 1);
+  for (const auto& kv : refs) {
+    if (!kv.second.has_def) continue;
+    const auto slot = std::min(kv.second.last_use, ops.size());
+    dying_at[slot].push_back(&kv.second);
+  }
+
   double peak_live = 0.0;
   std::size_t peak_at = 0;
   double live_bytes = 0.0;
@@ -313,12 +322,8 @@ dfabit::core::Status DataflowMemoryProxyTool::WriteSummary(
       peak_live = live_bytes;
       peak_at = i;
     }
-    for (auto& kv : refs) {
-      if (!kv.second.has_def || !live[kv.first]) continue;
-      if (kv.second.last_use <= i) {
-        live[kv.first] = false;
-        live_bytes -= kv.second.bytes;
-      }
+    for (const auto* dead : dying_at[i]) {
+      live_bytes -= dead->bytes;
     }
   }
 

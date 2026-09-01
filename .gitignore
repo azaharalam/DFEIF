@@ -95,3 +95,13 @@ datasets/
 *.tflite
 *.npy
 yolov5nu_saved_model/
+dfit_artifacts/
+test_out/
+build/
+build-static/
+*.tar.gz
+results/
+datasets/
+yolov5nu_saved_model/
+*.npy
+.dfabit_*.sh
