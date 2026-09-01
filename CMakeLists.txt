@@ -27,7 +27,6 @@ add_library(dfabit_core
   src/analysis/lightweight_fit.cc
   src/analysis/scalability_runner.cc
   src/analysis/reporting.cc
-  src/usecases/program_analyzer.cc
   src/api/context.cc
   src/metadata/stable_id.cc
   src/policy/policy_engine.cc

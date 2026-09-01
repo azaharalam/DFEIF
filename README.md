@@ -1,5 +1,8 @@
 # DFIT - A Framework for Building Instrumentation Tools Across Heterogeneous Dataflow Accelerators
 
+This is the artifact for *DFIT: A Framework for Building Instrumentation Tools
+Across Heterogeneous Dataflow Accelerators*, EuroSys 2027.
+
 DFIT (DataFlow Accelerator Instrumentation Tool) is an instrumentation framework
 for dataflow architectures. Unlike CPUs and GPUs, where instrumentation
 frameworks enable fine-grained introspection, dataflow hardware exposes little
@@ -252,3 +255,35 @@ That cluster was decommissioned and replaced with inference-only SN40L
 endpoints, which expose no compiler artifacts. We can no longer regenerate the
 compile-stage traces the checks would read, so SambaNova is not included in
 `REPRODUCE.md` and `verify.sh`.
+
+## 10. Environment and resource use
+
+Results in the paper were produced on:
+
+| | |
+|---|---|
+| host | Ubuntu 24.04.1 LTS, kernel 7.0.0-30-generic |
+| toolchain | GCC 13.3.0, CMake 3.28.3 |
+| Cerebras | CS-3 at ALCF, R_2.10.0 SDK |
+| Edge TPU | Coral USB Accelerator, Edge TPU Compiler 16.0.384591198 |
+| SambaNova | SN30 cluster, since decommissioned |
+
+The framework builds and runs on any Linux host with C++17 and CMake 3.16 or
+newer. No accelerator is needed for the checks in Section 3.
+
+| step | time | disk |
+|---|---|---|
+| `cmake --build` | 2-4 min | 200 MB |
+| `./build/smoketest` | under 5 s | negligible |
+| `bash verify.sh` | 1-2 min | 500 MB under `/tmp` |
+| `bash sweep_tools.sh` | 5-8 min | 1.5 GB under `results/` |
+
+A full clone is about 2.5 GB, most of it the shipped compiler artifacts.
+
+`verify.sh` prints SKIP for checks whose prerequisite is absent, which is
+expected on a host without the Edge TPU compiler or a Coral device. The sweep
+prints per-model progress lines; a model with no shipped source file is skipped
+silently.
+
+The tool output tables under `results/tools/` are the tabular form of the
+figures in Sections 4 and 5. No separate plotting step is required to read them.
